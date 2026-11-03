@@ -1,4 +1,4 @@
-"""Electrode coordinate lookup for geometry-seeded spatial filters."""
+"""EEG electrode coordinate lookup for geometry-seeded spatial filters."""
 
 from __future__ import annotations
 

@@ -1,0 +1,959 @@
+{
+ "default_22ch": {
+  "n_features": 192,
+  "dilations": [
+   1,
+   2,
+   4,
+   8
+  ],
+  "trainable_parameters": 3847,
+  "state_dict_shapes": {
+   "ppv_bias": [
+    192
+   ],
+   "stream_gate": [
+    3
+   ],
+   "spatial.conv.weight": [
+    16,
+    22,
+    1
+   ],
+   "spatial.bn.weight": [
+    16
+   ],
+   "spatial.bn.bias": [
+    16
+   ],
+   "spatial.bn.running_mean": [
+    16
+   ],
+   "spatial.bn.running_var": [
+    16
+   ],
+   "spatial.bn.num_batches_tracked": [],
+   "bank.fixed.0.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.1.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.2.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.3.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.learnable.0.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.1.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.2.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.3.weight": [
+    16,
+    1,
+    9
+   ],
+   "feature_norm.weight": [
+    192
+   ],
+   "feature_norm.bias": [
+    192
+   ],
+   "feature_norm.running_mean": [
+    192
+   ],
+   "feature_norm.running_var": [
+    192
+   ],
+   "feature_norm.num_batches_tracked": [],
+   "classify.weight": [
+    4,
+    576
+   ],
+   "classify.bias": [
+    4
+   ]
+  },
+  "logits_init": [
+   [
+    -0.08752347528934479,
+    0.04418210685253143,
+    -0.2907339036464691,
+    -0.16279877722263336
+   ],
+   [
+    -0.08671112358570099,
+    0.06327775865793228,
+    -0.282006174325943,
+    -0.15294642746448517
+   ],
+   [
+    -0.08925321698188782,
+    0.06264554709196091,
+    -0.29079386591911316,
+    -0.15276148915290833
+   ],
+   [
+    -0.07442155480384827,
+    0.06644009798765182,
+    -0.3030678331851959,
+    -0.15077565610408783
+   ]
+  ],
+  "logits_trained": [
+   [
+    -0.08345416933298111,
+    0.059620458632707596,
+    -0.2545589506626129,
+    -0.21751068532466888
+   ],
+   [
+    -0.08288697153329849,
+    0.07801540940999985,
+    -0.2450888752937317,
+    -0.2081889808177948
+   ],
+   [
+    -0.08585715293884277,
+    0.08409498631954193,
+    -0.25968223810195923,
+    -0.2092391848564148
+   ],
+   [
+    -0.06344293802976608,
+    0.08197125792503357,
+    -0.2728326618671417,
+    -0.20676656067371368
+   ]
+  ]
+ },
+ "low_rate_125hz": {
+  "n_features": 192,
+  "dilations": [
+   1,
+   1,
+   2,
+   4
+  ],
+  "trainable_parameters": 3655,
+  "state_dict_shapes": {
+   "ppv_bias": [
+    192
+   ],
+   "stream_gate": [
+    3
+   ],
+   "spatial.conv.weight": [
+    16,
+    10,
+    1
+   ],
+   "spatial.bn.weight": [
+    16
+   ],
+   "spatial.bn.bias": [
+    16
+   ],
+   "spatial.bn.running_mean": [
+    16
+   ],
+   "spatial.bn.running_var": [
+    16
+   ],
+   "spatial.bn.num_batches_tracked": [],
+   "bank.fixed.0.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.1.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.2.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.3.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.learnable.0.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.1.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.2.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.3.weight": [
+    16,
+    1,
+    9
+   ],
+   "feature_norm.weight": [
+    192
+   ],
+   "feature_norm.bias": [
+    192
+   ],
+   "feature_norm.running_mean": [
+    192
+   ],
+   "feature_norm.running_var": [
+    192
+   ],
+   "feature_norm.num_batches_tracked": [],
+   "classify.weight": [
+    4,
+    576
+   ],
+   "classify.bias": [
+    4
+   ]
+  },
+  "logits_init": [
+   [
+    0.304768443107605,
+    -0.0639653429389,
+    0.06923280656337738,
+    -0.07758782058954239
+   ],
+   [
+    0.32579800486564636,
+    -0.04621953144669533,
+    0.0962301641702652,
+    -0.0849747508764267
+   ],
+   [
+    0.30773797631263733,
+    -0.05125422030687332,
+    0.06081153824925423,
+    -0.09441983699798584
+   ],
+   [
+    0.30079835653305054,
+    -0.051581669598817825,
+    0.05668160319328308,
+    -0.08425475656986237
+   ]
+  ],
+  "logits_trained": [
+   [
+    0.3348042070865631,
+    -0.045489586889743805,
+    0.06979157775640488,
+    -0.13049116730690002
+   ],
+   [
+    0.34684640169143677,
+    -0.0179459135979414,
+    0.10033746063709259,
+    -0.13757489621639252
+   ],
+   [
+    0.33013173937797546,
+    -0.030450578778982162,
+    0.07145818322896957,
+    -0.1477339267730713
+   ],
+   [
+    0.3318064212799072,
+    -0.034302402287721634,
+    0.05905067175626755,
+    -0.13775430619716644
+   ]
+  ]
+ },
+ "high_rate_1000hz": {
+  "n_features": 192,
+  "dilations": [
+   4,
+   8,
+   16,
+   32
+  ],
+  "trainable_parameters": 2389,
+  "state_dict_shapes": {
+   "ppv_bias": [
+    192
+   ],
+   "stream_gate": [
+    3
+   ],
+   "spatial.conv.weight": [
+    16,
+    3,
+    1
+   ],
+   "spatial.bn.weight": [
+    16
+   ],
+   "spatial.bn.bias": [
+    16
+   ],
+   "spatial.bn.running_mean": [
+    16
+   ],
+   "spatial.bn.running_var": [
+    16
+   ],
+   "spatial.bn.num_batches_tracked": [],
+   "bank.fixed.0.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.1.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.2.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.3.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.learnable.0.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.1.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.2.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.3.weight": [
+    16,
+    1,
+    9
+   ],
+   "feature_norm.weight": [
+    192
+   ],
+   "feature_norm.bias": [
+    192
+   ],
+   "feature_norm.running_mean": [
+    192
+   ],
+   "feature_norm.running_var": [
+    192
+   ],
+   "feature_norm.num_batches_tracked": [],
+   "classify.weight": [
+    2,
+    576
+   ],
+   "classify.bias": [
+    2
+   ]
+  },
+  "logits_init": [
+   [
+    0.08705343306064606,
+    -0.2727101445198059
+   ],
+   [
+    0.08873765170574188,
+    -0.27021998167037964
+   ],
+   [
+    0.08762861788272858,
+    -0.2854176163673401
+   ],
+   [
+    0.10281015932559967,
+    -0.2838894724845886
+   ]
+  ],
+  "logits_trained": [
+   [
+    0.12115415185689926,
+    -0.30447226762771606
+   ],
+   [
+    0.1281944364309311,
+    -0.30739155411720276
+   ],
+   [
+    0.12691520154476166,
+    -0.3223556578159332
+   ],
+   [
+    0.14352720975875854,
+    -0.3223148286342621
+   ]
+  ]
+ },
+ "geometry_coords": {
+  "n_features": 192,
+  "dilations": [
+   1,
+   2,
+   4,
+   8
+  ],
+  "trainable_parameters": 2405,
+  "state_dict_shapes": {
+   "ppv_bias": [
+    192
+   ],
+   "stream_gate": [
+    3
+   ],
+   "spatial.conv.weight": [
+    16,
+    4,
+    1
+   ],
+   "spatial.bn.weight": [
+    16
+   ],
+   "spatial.bn.bias": [
+    16
+   ],
+   "spatial.bn.running_mean": [
+    16
+   ],
+   "spatial.bn.running_var": [
+    16
+   ],
+   "spatial.bn.num_batches_tracked": [],
+   "bank.fixed.0.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.1.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.2.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.3.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.learnable.0.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.1.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.2.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.3.weight": [
+    16,
+    1,
+    9
+   ],
+   "feature_norm.weight": [
+    192
+   ],
+   "feature_norm.bias": [
+    192
+   ],
+   "feature_norm.running_mean": [
+    192
+   ],
+   "feature_norm.running_var": [
+    192
+   ],
+   "feature_norm.num_batches_tracked": [],
+   "classify.weight": [
+    2,
+    576
+   ],
+   "classify.bias": [
+    2
+   ]
+  },
+  "logits_init": [
+   [
+    0.14382551610469818,
+    0.13748785853385925
+   ],
+   [
+    0.12023867666721344,
+    0.1254393458366394
+   ],
+   [
+    0.1236177533864975,
+    0.12640075385570526
+   ],
+   [
+    0.11939521133899689,
+    0.13984738290309906
+   ]
+  ],
+  "logits_trained": [
+   [
+    0.18910393118858337,
+    0.08676298707723618
+   ],
+   [
+    0.16699689626693726,
+    0.0734301432967186
+   ],
+   [
+    0.1664409339427948,
+    0.07828561216592789
+   ],
+   [
+    0.15748143196105957,
+    0.09627418965101242
+   ]
+  ]
+ },
+ "fixed_bank_only": {
+  "n_features": 128,
+  "dilations": [
+   1,
+   2,
+   4,
+   8
+  ],
+  "trainable_parameters": 1702,
+  "state_dict_shapes": {
+   "ppv_bias": [
+    128
+   ],
+   "stream_gate": [
+    3
+   ],
+   "spatial.conv.weight": [
+    16,
+    8,
+    1
+   ],
+   "spatial.bn.weight": [
+    16
+   ],
+   "spatial.bn.bias": [
+    16
+   ],
+   "spatial.bn.running_mean": [
+    16
+   ],
+   "spatial.bn.running_var": [
+    16
+   ],
+   "spatial.bn.num_batches_tracked": [],
+   "bank.fixed.0.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.1.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.2.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.3.weight": [
+    32,
+    1,
+    9
+   ],
+   "feature_norm.weight": [
+    128
+   ],
+   "feature_norm.bias": [
+    128
+   ],
+   "feature_norm.running_mean": [
+    128
+   ],
+   "feature_norm.running_var": [
+    128
+   ],
+   "feature_norm.num_batches_tracked": [],
+   "classify.weight": [
+    3,
+    384
+   ],
+   "classify.bias": [
+    3
+   ]
+  },
+  "logits_init": [
+   [
+    0.12789539992809296,
+    0.05425739288330078,
+    -0.005583040416240692
+   ],
+   [
+    0.12227261811494827,
+    0.04342827573418617,
+    -0.010121945291757584
+   ],
+   [
+    0.12809211015701294,
+    0.05845431983470917,
+    -0.010904353111982346
+   ],
+   [
+    0.15398737788200378,
+    0.049235694110393524,
+    0.00772017240524292
+   ]
+  ],
+  "logits_trained": [
+   [
+    0.09729631245136261,
+    0.0936305895447731,
+    -0.009970573708415031
+   ],
+   [
+    0.09203182905912399,
+    0.0824584886431694,
+    -0.014599258080124855
+   ],
+   [
+    0.09636138379573822,
+    0.09163378924131393,
+    -0.009198242798447609
+   ],
+   [
+    0.12334813177585602,
+    0.08393684029579163,
+    0.007890960201621056
+   ]
+  ]
+ },
+ "ppv_only": {
+  "n_features": 192,
+  "dilations": [
+   1,
+   2,
+   4,
+   8
+  ],
+  "trainable_parameters": 1892,
+  "state_dict_shapes": {
+   "ppv_bias": [
+    192
+   ],
+   "stream_gate": [
+    1
+   ],
+   "spatial.conv.weight": [
+    16,
+    8,
+    1
+   ],
+   "spatial.bn.weight": [
+    16
+   ],
+   "spatial.bn.bias": [
+    16
+   ],
+   "spatial.bn.running_mean": [
+    16
+   ],
+   "spatial.bn.running_var": [
+    16
+   ],
+   "spatial.bn.num_batches_tracked": [],
+   "bank.fixed.0.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.1.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.2.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.3.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.learnable.0.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.1.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.2.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.3.weight": [
+    16,
+    1,
+    9
+   ],
+   "feature_norm.weight": [
+    192
+   ],
+   "feature_norm.bias": [
+    192
+   ],
+   "feature_norm.running_mean": [
+    192
+   ],
+   "feature_norm.running_var": [
+    192
+   ],
+   "feature_norm.num_batches_tracked": [],
+   "classify.weight": [
+    3,
+    192
+   ],
+   "classify.bias": [
+    3
+   ]
+  },
+  "logits_init": [
+   [
+    -0.046430058777332306,
+    -0.26370710134506226,
+    -0.2097785472869873
+   ],
+   [
+    -0.04341018199920654,
+    -0.27002447843551636,
+    -0.20617908239364624
+   ],
+   [
+    -0.0374358668923378,
+    -0.26411741971969604,
+    -0.20335891842842102
+   ],
+   [
+    -0.033559657633304596,
+    -0.26178598403930664,
+    -0.20232164859771729
+   ]
+  ],
+  "logits_trained": [
+   [
+    -0.14534439146518707,
+    -0.17789024114608765,
+    -0.1385362595319748
+   ],
+   [
+    -0.1422819048166275,
+    -0.18401619791984558,
+    -0.1347554624080658
+   ],
+   [
+    -0.1369468718767166,
+    -0.17811112105846405,
+    -0.13125640153884888
+   ],
+   [
+    -0.1327601969242096,
+    -0.17608903348445892,
+    -0.1306803673505783
+   ]
+  ]
+ },
+ "no_ppv_bias": {
+  "n_features": 192,
+  "dilations": [
+   1,
+   2,
+   4,
+   8
+  ],
+  "trainable_parameters": 2854,
+  "state_dict_shapes": {
+   "stream_gate": [
+    3
+   ],
+   "spatial.conv.weight": [
+    16,
+    8,
+    1
+   ],
+   "spatial.bn.weight": [
+    16
+   ],
+   "spatial.bn.bias": [
+    16
+   ],
+   "spatial.bn.running_mean": [
+    16
+   ],
+   "spatial.bn.running_var": [
+    16
+   ],
+   "spatial.bn.num_batches_tracked": [],
+   "bank.fixed.0.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.1.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.2.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.fixed.3.weight": [
+    32,
+    1,
+    9
+   ],
+   "bank.learnable.0.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.1.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.2.weight": [
+    16,
+    1,
+    9
+   ],
+   "bank.learnable.3.weight": [
+    16,
+    1,
+    9
+   ],
+   "feature_norm.weight": [
+    192
+   ],
+   "feature_norm.bias": [
+    192
+   ],
+   "feature_norm.running_mean": [
+    192
+   ],
+   "feature_norm.running_var": [
+    192
+   ],
+   "feature_norm.num_batches_tracked": [],
+   "classify.weight": [
+    3,
+    576
+   ],
+   "classify.bias": [
+    3
+   ]
+  },
+  "logits_init": [
+   [
+    -0.27820876240730286,
+    0.13794474303722382,
+    -0.16507112979888916
+   ],
+   [
+    -0.26108548045158386,
+    0.1372181922197342,
+    -0.1689125895500183
+   ],
+   [
+    -0.2500263750553131,
+    0.12905821204185486,
+    -0.14273948967456818
+   ],
+   [
+    -0.2563133239746094,
+    0.12457463145256042,
+    -0.14596806466579437
+   ]
+  ],
+  "logits_trained": [
+   [
+    -0.3055907189846039,
+    0.14161719381809235,
+    -0.10129639506340027
+   ],
+   [
+    -0.28980007767677307,
+    0.14065229892730713,
+    -0.10392598807811737
+   ],
+   [
+    -0.28125083446502686,
+    0.12359972298145294,
+    -0.06975344568490982
+   ],
+   [
+    -0.2873140871524811,
+    0.1205272525548935,
+    -0.07368718832731247
+   ]
+  ]
+ }
+}

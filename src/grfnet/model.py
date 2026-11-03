@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+import math
+import operator
+
 import torch
 from torch import nn
 
 _STATISTICS = ("ppv", "bandpower", "mean")
+_BASE_DILATIONS = (1, 2, 4, 8)
+_REFERENCE_SFREQ = 250.0
+
+
+def scale_dilations(base_dilations, sfreq: float, reference_sfreq: float = _REFERENCE_SFREQ) -> list[int]:
+    """Rescale dilations set at reference_sfreq to sfreq, rounding half up, with a minimum of 1."""
+    if sfreq <= 0 or reference_sfreq <= 0:
+        raise ValueError(f"sampling rates must be positive; got sfreq={sfreq}, reference_sfreq={reference_sfreq}")
+    return [max(1, math.floor(b * sfreq / reference_sfreq + 0.5)) for b in base_dilations]
+
+
+def _check_dilations(dilations) -> list[int]:
+    try:
+        dilations = [operator.index(d) for d in dilations]
+    except TypeError:
+        raise ValueError(f"dilations must be integers; got {list(dilations)}") from None
+    if not dilations or min(dilations) < 1:
+        raise ValueError(f"dilations must be a non-empty sequence of integers >= 1; got {dilations}")
+    return dilations
 
 
 def _rocket_init_(weight: torch.Tensor) -> None:
@@ -14,7 +36,7 @@ def _rocket_init_(weight: torch.Tensor) -> None:
 
 
 def _channel_coords_from_names(channel_names, n_channels: int):
-    """2-D montage coordinates for named electrodes, via the project's 10-20 lookup."""
+    """2-D coordinates for named EEG electrodes, via the 10-20 lookup."""
     from .channels import channel_positions
 
     names = list(channel_names)
@@ -26,7 +48,7 @@ def _channel_coords_from_names(channel_names, n_channels: int):
 
 
 def _geometry_seed_spatial_(weight: torch.Tensor, coords) -> None:
-    """Seed a spatial-conv weight (spatial_components, n_channels, 1) with smooth spatial basis patterns (x, y gradients, then quadratics) built from electrode coordinates and cycled across the outputs."""
+    """Seed a spatial-conv weight (spatial_components, n_channels, 1) with smooth spatial basis patterns (x, y gradients, then quadratics) built from sensor coordinates and cycled across the outputs."""
     n_components, n_channels, _ = weight.shape
     coords = torch.as_tensor(coords, dtype=weight.dtype)
     if coords.shape != (n_channels, 2):
@@ -47,7 +69,7 @@ def _geometry_seed_spatial_(weight: torch.Tensor, coords) -> None:
 
 
 class SpatialFrontEnd(nn.Module):
-    """Learnable spatial mixer: a 1x1 conv over the montage giving spatial_components CSP-like components, then BatchNorm. Optionally geometry-seeded from electrode coordinates."""
+    """Learnable spatial mixer: a 1x1 conv over the input channels giving spatial_components components, then BatchNorm. Optionally geometry-seeded from sensor coordinates."""
 
     def __init__(
         self,
@@ -59,10 +81,10 @@ class SpatialFrontEnd(nn.Module):
         channel_coords=None,
     ) -> None:
         super().__init__()
-        # geometry is used when a montage is supplied and nothing else is asked for; random is the default
+        # geometry is used when sensor positions are supplied and nothing else is asked for; random is the default
         if spatial_init is None:
-            has_montage = channel_names is not None or channel_coords is not None
-            spatial_init = "geometry" if has_montage else "random"
+            has_positions = channel_names is not None or channel_coords is not None
+            spatial_init = "geometry" if has_positions else "random"
         if spatial_init not in ("random", "geometry"):
             raise ValueError(f"spatial_init must be 'random' or 'geometry'; got {spatial_init!r}")
         self.conv = nn.Conv1d(n_channels, spatial_components, 1, bias=False)
@@ -82,15 +104,14 @@ class SpatialFrontEnd(nn.Module):
 
 
 class RocketFeatureBank(nn.Module):
-    """Multi-dilation depthwise conv bank over the spatial components: a frozen ROCKET-style kernel set (low variance) plus an optional few learnable band-adaptive kernels. Dilations scale with the sampling rate so the receptive fields cover a fixed span in seconds."""
+    """Multi-dilation depthwise conv bank over the spatial components: a frozen ROCKET-style kernel set (low variance) plus an optional few learnable kernels. One kernel group per dilation."""
 
     def __init__(
         self,
         spatial_components: int,
         *,
-        sfreq: float,
         kernel_length: int,
-        base_dilations,
+        dilations,
         fixed_per_group: int,
         learnable_per_group: int,
     ) -> None:
@@ -101,9 +122,7 @@ class RocketFeatureBank(nn.Module):
             raise ValueError(f"fixed_per_group must be >= 1; got {fixed_per_group}")
         if learnable_per_group < 0:
             raise ValueError(f"learnable_per_group must be >= 0; got {learnable_per_group}")
-        # Rate-adaptive dilations: a fixed base set at 250 Hz, rescaled by sfreq so a
-        # 4 s window keeps the same dilation count at 125 and 250 Hz.
-        self.dilations = [max(1, round(b * sfreq / 250.0)) for b in base_dilations]
+        self.dilations = _check_dilations(dilations)
         s = spatial_components
 
         def _conv(out_per_group: int, dilation: int) -> nn.Conv1d:
@@ -141,21 +160,22 @@ class RocketFeatureBank(nn.Module):
 
 
 class GRFNet(nn.Module):
-    """GRF-Net for motor imagery: geometry-aware learnable spatial front-end -> ROCKET-style multi-dilation conv bank -> PPV/band-power/mean fusion pooling -> gated compact linear head. statistics selects the fusion streams; learnable_per_group=0 is the pure-fixed-bank ablation."""
+    """GRF-Net (Geometry-aware Rocket-Fusion Network) for multichannel time series: geometry-aware learnable spatial front-end -> ROCKET-style multi-dilation conv bank -> PPV/log-variance/mean fusion pooling -> gated compact linear head. statistics selects the fusion streams; learnable_per_group=0 is the pure-fixed-bank ablation. Accepts inputs of any length; n_times is recorded only."""
 
     def __init__(
         self,
         n_channels: int,
-        n_times: int,
-        n_classes: int,
+        n_times: int | None = None,
+        n_classes: int | None = None,
         *,
-        sfreq: float = 250.0,
+        sfreq: float | None = None,
         spatial_components: int = 16,
         spatial_init: str | None = None,
         channel_names=None,
         channel_coords=None,
         kernel_length: int = 9,
-        base_dilations=(1, 2, 4, 8),
+        base_dilations=None,
+        dilations=None,
         fixed_per_group: int = 2,
         learnable_per_group: int = 1,
         statistics=_STATISTICS,
@@ -164,6 +184,19 @@ class GRFNet(nn.Module):
         dropout: float = 0.3,
     ) -> None:
         super().__init__()
+        if n_classes is None:
+            raise TypeError("GRFNet requires n_classes")
+        if n_times is not None and n_times < 1:
+            raise ValueError(f"n_times must be >= 1; got {n_times}")
+        if sfreq is not None and sfreq <= 0:
+            raise ValueError(f"sfreq must be positive; got {sfreq}")
+        # Explicit dilations are used as given. Otherwise base dilations are set at 250 Hz and rescaled by sfreq.
+        if dilations is not None:
+            if sfreq is not None or base_dilations is not None:
+                raise ValueError("pass dilations on its own, or sfreq and base_dilations, not both")
+        else:
+            base = _BASE_DILATIONS if base_dilations is None else base_dilations
+            dilations = base if sfreq is None else scale_dilations(base, sfreq)
         statistics = tuple(statistics)
         unknown = [s for s in statistics if s not in _STATISTICS]
         if unknown:
@@ -178,6 +211,7 @@ class GRFNet(nn.Module):
         self.n_channels = n_channels
         self.n_times = n_times
         self.n_classes = n_classes
+        self.sfreq = sfreq
         self.statistics = statistics
         self.ppv_tau = ppv_tau
 
@@ -190,9 +224,8 @@ class GRFNet(nn.Module):
         )
         self.bank = RocketFeatureBank(
             spatial_components,
-            sfreq=sfreq,
             kernel_length=kernel_length,
-            base_dilations=base_dilations,
+            dilations=dilations,
             fixed_per_group=fixed_per_group,
             learnable_per_group=learnable_per_group,
         )
@@ -216,7 +249,7 @@ class GRFNet(nn.Module):
                 z = feats if self.ppv_bias is None else feats - self.ppv_bias[None, :, None]
                 streams.append(torch.sigmoid(z / self.ppv_tau).mean(dim=-1))
             elif name == "bandpower":
-                # log-variance over time: the FBCSP/ShallowConvNet mu/beta ERD-ERS feature.
+                # log-variance over time
                 streams.append(torch.log(feats.var(dim=-1, unbiased=False) + 1e-6))
             else:
                 streams.append(feats.mean(dim=-1))

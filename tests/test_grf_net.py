@@ -5,7 +5,7 @@ import pytest
 
 from conftest import requires_torch
 
-MONTAGES = [3, 4, 10, 22]
+CHANNEL_COUNTS = [3, 4, 10, 22]
 RATES = [(125.0, 500), (250.0, 1000)]
 
 
@@ -14,7 +14,7 @@ def _coords(n_channels, seed=0):
 
 
 @requires_torch()
-@pytest.mark.parametrize("n_channels", MONTAGES)
+@pytest.mark.parametrize("n_channels", CHANNEL_COUNTS)
 @pytest.mark.parametrize("sfreq,n_times", RATES)
 @pytest.mark.parametrize("batch", [1, 16])
 def test_forward_shape(n_channels, sfreq, n_times, batch):
@@ -125,8 +125,7 @@ def test_geometry_requires_and_validates_coords():
         GRFNet(n_channels=4, n_times=1000, n_classes=2, spatial_init="geometry")
     with pytest.raises(ValueError, match=r"channel_coords must be \(4, 2\)"):
         GRFNet(n_channels=4, n_times=1000, n_classes=2, spatial_init="geometry", channel_coords=_coords(5))
-    # names are resolved against the montage template, so a wrong count or an
-    # electrode the template does not carry must fail loudly rather than mis-seed
+    # wrong name counts and names missing from the template must raise
     with pytest.raises(ValueError, match="channel_names must have 4 entries"):
         GRFNet(n_channels=4, n_times=1000, n_classes=2, channel_names=["C3", "Cz", "C4"])
     with pytest.raises(ValueError, match="absent from the standard_1020 template"):
@@ -139,7 +138,7 @@ def test_channel_names_select_geometry_and_match_explicit_coords():
     from grfnet import GRFNet
 
     names = ["C3", "Cz", "C4", "Pz"]
-    # supplying a montage implies geometry seeding without asking for it
+    # supplying sensor positions implies geometry seeding without asking for it
     by_name = GRFNet(n_channels=4, n_times=1000, n_classes=2, channel_names=names)
     assert by_name.spatial.spatial_init == "geometry"
     # and resolving names must give exactly what passing the coordinates gives
@@ -156,7 +155,7 @@ def test_channel_names_select_geometry_and_match_explicit_coords():
 
 
 @requires_torch()
-def test_defaults_to_random_when_no_montage_given():
+def test_defaults_to_random_when_no_positions_given():
     from grfnet import GRFNet
 
     model = GRFNet(n_channels=4, n_times=1000, n_classes=2)
@@ -167,7 +166,7 @@ def test_defaults_to_random_when_no_montage_given():
 def test_degenerate_geometry_pattern_is_skipped_not_seeded_dead():
     from grfnet import GRFNet
 
-    # collinear electrodes flatten the x*y basis pattern; every seeded component
+    # collinear sensors flatten the x*y basis pattern; every seeded component
     # must still be a live unit-norm filter rather than an all-zero row
     coords = np.stack([np.linspace(-1.0, 1.0, 4), np.zeros(4)], axis=1)
     model = GRFNet(n_channels=4, n_times=1000, n_classes=2,
