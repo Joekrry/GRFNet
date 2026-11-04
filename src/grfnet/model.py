@@ -47,25 +47,48 @@ def _channel_coords_from_names(channel_names, n_channels: int):
     return channel_positions(names)
 
 
-def _geometry_seed_spatial_(weight: torch.Tensor, coords) -> None:
-    """Seed a spatial-conv weight (spatial_components, n_channels, 1) with smooth spatial basis patterns (x, y gradients, then quadratics) built from sensor coordinates and cycled across the outputs."""
+def _coordinate_patterns(coords: torch.Tensor) -> list[torch.Tensor]:
+    """Smooth patterns over sensors at coords (n_channels, d): one gradient per axis, then the squared radius, cross products and differences of squares."""
+    axes = list(coords.T)
+    family = list(axes)
+    family.append(sum(a * a for a in axes))
+    family += [axes[i] * axes[j] for i in range(len(axes)) for j in range(i + 1, len(axes))]
+    family += [axes[i] * axes[i] - axes[i + 1] * axes[i + 1] for i in range(len(axes) - 1)]
+    return family
+
+
+def _geometry_seed_spatial_(weight: torch.Tensor, coords) -> int:
+    """Seed a spatial-conv weight (spatial_components, n_channels, 1) with coordinate patterns as unit-norm contrasts. Rows beyond the usable patterns keep their random init, rescaled to unit-norm contrasts. Returns the number of geometry-seeded rows."""
     n_components, n_channels, _ = weight.shape
     coords = torch.as_tensor(coords, dtype=weight.dtype)
-    if coords.shape != (n_channels, 2):
-        raise ValueError(f"channel_coords must be ({n_channels}, 2); got {tuple(coords.shape)}")
-    x, y = coords[:, 0], coords[:, 1]
-    family = [x, y, x * x + y * y, x * y, x * x - y * y]
+    if coords.dim() == 1:
+        coords = coords[:, None]
+    if coords.dim() != 2 or coords.shape[0] != n_channels or coords.shape[1] < 1:
+        raise ValueError(
+            f"channel_coords must have shape ({n_channels}, d) or ({n_channels},); got {tuple(coords.shape)}"
+        )
+    if not torch.isfinite(coords).all():
+        raise ValueError("channel_coords must be finite")
     basis = []
-    for feature in family:
+    for feature in _coordinate_patterns(coords):
         feature = feature - feature.mean()
         norm = feature.norm()
-        if norm > 1e-6:
-            basis.append(feature / norm)
+        if norm <= 1e-6:
+            continue  # degenerate for this layout
+        feature = feature / norm
+        if any(abs(torch.dot(feature, b)) > 1 - 1e-6 for b in basis):
+            continue  # duplicate of an earlier pattern
+        basis.append(feature)
     if not basis:
-        return  # no usable geometry
+        return 0
+    n_seeded = min(len(basis), n_components)
     with torch.no_grad():
-        for out_channel in range(n_components):
-            weight[out_channel, :, 0] = basis[out_channel % len(basis)]
+        for out_channel in range(n_seeded):
+            weight[out_channel, :, 0] = basis[out_channel]
+        rest = weight[n_seeded:, :, 0]
+        rest -= rest.mean(dim=1, keepdim=True)
+        rest /= rest.norm(dim=1, keepdim=True).clamp_min(1e-12)
+    return n_seeded
 
 
 class SpatialFrontEnd(nn.Module):
@@ -90,6 +113,7 @@ class SpatialFrontEnd(nn.Module):
         self.conv = nn.Conv1d(n_channels, spatial_components, 1, bias=False)
         self.bn = nn.BatchNorm1d(spatial_components, momentum=0.01, eps=1e-3)
         self.spatial_init = spatial_init
+        self.n_geometry_components = 0
         if spatial_init == "geometry":
             if channel_coords is None:
                 if channel_names is None:
@@ -97,7 +121,7 @@ class SpatialFrontEnd(nn.Module):
                         "spatial_init='geometry' requires channel_names or channel_coords"
                     )
                 channel_coords = _channel_coords_from_names(channel_names, n_channels)
-            _geometry_seed_spatial_(self.conv.weight, channel_coords)
+            self.n_geometry_components = _geometry_seed_spatial_(self.conv.weight, channel_coords)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.bn(self.conv(x))  # (batch, spatial_components, n_times)

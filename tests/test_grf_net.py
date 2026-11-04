@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from conftest import requires_torch
+from conftest import requires_mne, requires_torch
 
 CHANNEL_COUNTS = [3, 4, 10, 22]
 RATES = [(125.0, 500), (250.0, 1000)]
@@ -123,35 +123,47 @@ def test_geometry_requires_and_validates_coords():
 
     with pytest.raises(ValueError, match="requires channel_names or channel_coords"):
         GRFNet(n_channels=4, n_times=1000, n_classes=2, spatial_init="geometry")
-    with pytest.raises(ValueError, match=r"channel_coords must be \(4, 2\)"):
+    with pytest.raises(ValueError, match=r"channel_coords must have shape \(4, d\)"):
         GRFNet(n_channels=4, n_times=1000, n_classes=2, spatial_init="geometry", channel_coords=_coords(5))
-    # wrong name counts and names missing from the template must raise
     with pytest.raises(ValueError, match="channel_names must have 4 entries"):
         GRFNet(n_channels=4, n_times=1000, n_classes=2, channel_names=["C3", "Cz", "C4"])
+
+
+@requires_mne()
+@requires_torch()
+def test_unknown_channel_name_raises():
+    from grfnet import GRFNet
+
     with pytest.raises(ValueError, match="absent from the standard_1020 template"):
         GRFNet(n_channels=2, n_times=1000, n_classes=2, channel_names=["C3", "NotAnElectrode"])
 
 
+@requires_mne()
 @requires_torch()
 def test_channel_names_select_geometry_and_match_explicit_coords():
+    import torch
+
     from grfnet.channels import channel_positions
     from grfnet import GRFNet
 
     names = ["C3", "Cz", "C4", "Pz"]
     # supplying sensor positions implies geometry seeding without asking for it
+    torch.manual_seed(0)
     by_name = GRFNet(n_channels=4, n_times=1000, n_classes=2, channel_names=names)
     assert by_name.spatial.spatial_init == "geometry"
-    # and resolving names must give exactly what passing the coordinates gives
+    # resolving names gives exactly what passing the coordinates gives
+    torch.manual_seed(0)
     by_coords = GRFNet(n_channels=4, n_times=1000, n_classes=2,
                        channel_coords=channel_positions(names))
     assert np.allclose(by_name.spatial.conv.weight.detach().numpy(),
                        by_coords.spatial.conv.weight.detach().numpy())
-    # geometry is data-driven, so it does not vary with the torch RNG
-    torch = pytest.importorskip("torch")
+    # geometry-seeded rows do not depend on the torch RNG
     torch.manual_seed(1234)
     again = GRFNet(n_channels=4, n_times=1000, n_classes=2, channel_names=names)
-    assert np.allclose(by_name.spatial.conv.weight.detach().numpy(),
-                       again.spatial.conv.weight.detach().numpy())
+    n = by_name.spatial.n_geometry_components
+    assert n > 0
+    assert np.allclose(by_name.spatial.conv.weight.detach().numpy()[:n],
+                       again.spatial.conv.weight.detach().numpy()[:n])
 
 
 @requires_torch()

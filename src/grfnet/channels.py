@@ -8,11 +8,18 @@ import numpy as np
 
 
 def channel_positions(
-    names: Sequence[str], *, montage: str = "standard_1020"
+    names: Sequence[str], *, montage: str = "standard_1020", ndim: int = 2
 ) -> np.ndarray:
-    """2-D projected, normalised (n, 2) electrode coordinates for names, from MNE's 10-20 template (x = right, y = anterior; centroid-centred, unit max radius),
-    used to seed the GRF-Net spatial conv; raises if a name is absent."""
-    import mne
+    """Normalised (n, ndim) electrode coordinates for names, from an MNE template (x = right, y = anterior, z = up; centroid-centred, unit max radius).
+    ndim=2 drops z. Raises if a name is absent. Requires the eeg extra."""
+    if ndim not in (2, 3):
+        raise ValueError(f"ndim must be 2 or 3; got {ndim}")
+    try:
+        import mne
+    except ImportError:
+        raise ImportError(
+            "channel_positions requires MNE-Python; install it with: pip install grfnet[eeg]"
+        ) from None
 
     template = mne.channels.make_standard_montage(montage).get_positions()["ch_pos"]
     by_lower = {name.lower(): name for name in template}
@@ -20,7 +27,7 @@ def channel_positions(
     if missing:
         raise ValueError(f"channels absent from the {montage} template: {missing}")
     coords = np.array(
-        [template[by_lower[name.lower()]][:2] for name in names], dtype=np.float64
+        [template[by_lower[name.lower()]][:ndim] for name in names], dtype=np.float64
     )
 
     # centre on the montage centroid, then scale so the outermost electrode = 1

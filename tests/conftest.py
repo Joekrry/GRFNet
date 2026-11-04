@@ -7,6 +7,14 @@ import importlib.util
 import pytest
 
 
+def requires_mne():
+    """Skip marker for when MNE-Python is not installed."""
+    return pytest.mark.skipif(
+        importlib.util.find_spec("mne") is None,
+        reason="mne not installed",
+    )
+
+
 def requires_torch():
     """Skip marker for when PyTorch is not installed."""
     return pytest.mark.skipif(

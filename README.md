@@ -50,7 +50,13 @@ cd GRFNet
 pip install -e .
 ```
 
-Requires Python 3.11 or later and PyTorch 2.2 or later.
+Requires Python 3.11 or later and PyTorch 2.2 or later. To look up EEG
+electrode positions by name, also install the optional `eeg` extra, which adds
+MNE-Python:
+
+```bash
+pip install -e ".[eeg]"
+```
 
 ## Quick start
 
@@ -113,7 +119,8 @@ optimizer.step()
 ### Geometry-seeded spatial filters
 
 Pass sensor coordinates to initialise the spatial filters with smooth spatial
-patterns:
+patterns. Coordinates can have any number of dimensions, such as positions
+along a line, on a surface or in 3-D space:
 
 ```python
 from grfnet import GRFNet
@@ -122,7 +129,14 @@ coords = [[0.0, 1.0], [1.0, 0.0], [0.0, -1.0], [-1.0, 0.0]]  # (n_channels, 2)
 model = GRFNet(n_channels=4, n_times=1000, n_classes=2, channel_coords=coords)
 ```
 
-For EEG data, standard 10-20 electrode names are also accepted:
+The patterns are a gradient along each axis, then the squared distance from the
+centre, products of axes and differences of squared axes. Duplicate patterns
+and those that are constant across the sensors are skipped. When there are more
+components than patterns, the extra components start from random weights.
+`model.spatial.n_geometry_components` reports how many were seeded.
+
+For EEG data, standard 10-20 electrode names are also accepted. This requires
+the `eeg` extra:
 
 ```python
 from grfnet import GRFNet
@@ -135,6 +149,15 @@ model = GRFNet(
 )
 ```
 
+To seed from 3-D electrode positions, look them up first:
+
+```python
+from grfnet import GRFNet, channel_positions
+
+names = ["Fz", "C3", "Cz", "C4", "Pz", "O1", "O2", "F3"]
+model = GRFNet(n_channels=8, n_classes=2, channel_coords=channel_positions(names, ndim=3))
+```
+
 ## Configuration
 
 | Argument | Default | Description |
@@ -145,8 +168,8 @@ model = GRFNet(
 | `sfreq` | `None` | Sampling rate in Hz. When set, rescales `base_dilations` from 250 Hz. |
 | `spatial_components` | `16` | Number of learned spatial components. |
 | `spatial_init` | `None` | `"random"` or `"geometry"`. `None` uses geometry when sensor positions are supplied. |
-| `channel_names` | `None` | EEG electrode names resolved against the 10-20 template. |
-| `channel_coords` | `None` | Sensor coordinates with shape `(n_channels, 2)`. |
+| `channel_names` | `None` | EEG electrode names resolved against the 10-20 template. Requires the `eeg` extra. |
+| `channel_coords` | `None` | Sensor coordinates with shape `(n_channels, d)`, or `(n_channels,)` for one dimension. |
 | `kernel_length` | `9` | Convolution kernel length. Must be odd. |
 | `base_dilations` | `None` | Dilations before rescaling. `None` uses `(1, 2, 4, 8)`. |
 | `dilations` | `None` | Dilations used as given. Cannot be combined with `sfreq` or `base_dilations`. |
