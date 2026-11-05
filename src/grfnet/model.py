@@ -6,7 +6,9 @@ import operator
 import torch
 from torch import nn
 
-_STATISTICS = ("ppv", "bandpower", "mean")
+_STATISTICS = ("ppv", "logvar", "mean")
+_BUILTIN_STATISTICS = ("ppv", "logvar", "mean", "max", "std", "bandpower")
+_STATISTIC_ALIASES = {"bandpower": "logvar"}
 _BASE_DILATIONS = (1, 2, 4, 8)
 _REFERENCE_SFREQ = 250.0
 
@@ -28,10 +30,10 @@ def _check_dilations(dilations) -> list[int]:
     return dilations
 
 
-def _rocket_init_(weight: torch.Tensor) -> None:
+def _rocket_init_(weight: torch.Tensor, generator: torch.Generator | None = None) -> None:
     """Seed a conv weight (out, 1, K) ROCKET-style: random kernels, each mean-centred over its taps (so a constant input yields no response)."""
     with torch.no_grad():
-        weight.normal_()
+        weight.normal_(generator=generator)
         weight.sub_(weight.mean(dim=-1, keepdim=True))
 
 
@@ -128,7 +130,7 @@ class SpatialFrontEnd(nn.Module):
 
 
 class RocketFeatureBank(nn.Module):
-    """Multi-dilation depthwise conv bank over the spatial components: a frozen ROCKET-style kernel set (low variance) plus an optional few learnable kernels. One kernel group per dilation."""
+    """Multi-dilation depthwise conv bank over the spatial components: a frozen ROCKET-style kernel set (low variance) plus an optional few learnable kernels. One kernel group per dilation. seed draws the frozen kernels from a private generator instead of the global RNG."""
 
     def __init__(
         self,
@@ -138,6 +140,7 @@ class RocketFeatureBank(nn.Module):
         dilations,
         fixed_per_group: int,
         learnable_per_group: int,
+        seed: int | None = None,
     ) -> None:
         super().__init__()
         if kernel_length % 2 == 0:
@@ -161,10 +164,15 @@ class RocketFeatureBank(nn.Module):
                 bias=False,
             )
 
+        generator = None
+        if seed is not None:
+            generator = torch.Generator().manual_seed(operator.index(seed))
+        self.seed = seed
+
         self.fixed = nn.ModuleList()
         for dilation in self.dilations:
             conv = _conv(fixed_per_group, dilation)
-            _rocket_init_(conv.weight)
+            _rocket_init_(conv.weight, generator)
             conv.weight.requires_grad_(False)  # frozen ROCKET bank (low overfitting)
             self.fixed.append(conv)
 
@@ -184,7 +192,9 @@ class RocketFeatureBank(nn.Module):
 
 
 class GRFNet(nn.Module):
-    """GRF-Net (Geometry-aware Rocket-Fusion Network) for multichannel time series: geometry-aware learnable spatial front-end -> ROCKET-style multi-dilation conv bank -> PPV/log-variance/mean fusion pooling -> gated compact linear head. statistics selects the fusion streams; learnable_per_group=0 is the pure-fixed-bank ablation. Accepts inputs of any length; n_times is recorded only."""
+    """GRF-Net (Geometry-aware Rocket-Fusion Network) for multichannel time series: geometry-aware learnable spatial front-end -> ROCKET-style multi-dilation conv bank -> fusion pooling -> gated embedding -> head. statistics selects the fusion streams; learnable_per_group=0 is the pure-fixed-bank ablation. Accepts inputs of any length; n_times is recorded only.
+
+    head is "linear" (needs n_outputs or its alias n_classes), None (forward returns the embedding), an nn.Module, or a callable mapping embedding_dim to an nn.Module."""
 
     def __init__(
         self,
@@ -192,6 +202,8 @@ class GRFNet(nn.Module):
         n_times: int | None = None,
         n_classes: int | None = None,
         *,
+        n_outputs: int | None = None,
+        head="linear",
         sfreq: float | None = None,
         spatial_components: int = 16,
         spatial_init: str | None = None,
@@ -205,11 +217,23 @@ class GRFNet(nn.Module):
         statistics=_STATISTICS,
         ppv_tau: float = 0.5,
         ppv_bias: bool = True,
+        logvar_eps: float = 1e-6,
         dropout: float = 0.3,
+        bank_seed: int | None = None,
     ) -> None:
         super().__init__()
-        if n_classes is None:
-            raise TypeError("GRFNet requires n_classes")
+        if n_outputs is None:
+            n_outputs = n_classes
+        elif n_classes is not None and n_classes != n_outputs:
+            raise ValueError(f"n_classes and n_outputs disagree; got {n_classes} and {n_outputs}")
+        if isinstance(head, str) and head == "linear":
+            if n_outputs is None:
+                raise TypeError("GRFNet requires n_outputs or n_classes for the linear head; pass head=None for embeddings")
+        elif head is None:
+            if n_outputs is not None:
+                raise ValueError("head=None returns embeddings; leave n_outputs and n_classes unset")
+        elif not (isinstance(head, nn.Module) or callable(head)):
+            raise ValueError(f"head must be 'linear', None, an nn.Module or a callable; got {head!r}")
         if n_times is not None and n_times < 1:
             raise ValueError(f"n_times must be >= 1; got {n_times}")
         if sfreq is not None and sfreq <= 0:
@@ -222,22 +246,32 @@ class GRFNet(nn.Module):
             base = _BASE_DILATIONS if base_dilations is None else base_dilations
             dilations = base if sfreq is None else scale_dilations(base, sfreq)
         statistics = tuple(statistics)
-        unknown = [s for s in statistics if s not in _STATISTICS]
-        if unknown:
-            raise ValueError(f"statistics must be drawn from {_STATISTICS}; got {unknown}")
-        if len(set(statistics)) != len(statistics):
-            raise ValueError(f"statistics must not repeat; got {statistics}")
         if not statistics:
             raise ValueError("statistics must name at least one fusion stream")
+        stat_keys = []
+        for stat in statistics:
+            if isinstance(stat, str) and stat in _BUILTIN_STATISTICS:
+                stat_keys.append(_STATISTIC_ALIASES.get(stat, stat))
+            elif callable(stat) and not isinstance(stat, str):
+                stat_keys.append(stat)
+            else:
+                raise ValueError(f"statistics must be callables or names from {_BUILTIN_STATISTICS}; got {stat!r}")
+        if len(set(stat_keys)) != len(stat_keys):
+            raise ValueError(f"statistics must not repeat (bandpower is an alias of logvar); got {statistics}")
         if ppv_tau <= 0:
             raise ValueError(f"ppv_tau must be positive; got {ppv_tau}")
+        if logvar_eps <= 0:
+            raise ValueError(f"logvar_eps must be positive; got {logvar_eps}")
 
         self.n_channels = n_channels
         self.n_times = n_times
-        self.n_classes = n_classes
+        self.n_outputs = n_outputs
+        self.n_classes = n_outputs
         self.sfreq = sfreq
         self.statistics = statistics
+        self._stat_keys = stat_keys
         self.ppv_tau = ppv_tau
+        self.logvar_eps = logvar_eps
 
         self.spatial = SpatialFrontEnd(
             n_channels,
@@ -252,34 +286,53 @@ class GRFNet(nn.Module):
             dilations=dilations,
             fixed_per_group=fixed_per_group,
             learnable_per_group=learnable_per_group,
+            seed=bank_seed,
         )
 
         n_features = len(self.bank.dilations) * spatial_components * (fixed_per_group + learnable_per_group)
         self.n_features = n_features
-        pooled_dim = len(statistics) * n_features
+        self.embedding_dim = len(statistics) * n_features
         self.feature_norm = nn.BatchNorm1d(n_features, momentum=0.01, eps=1e-3)
         self.ppv_bias = (
-            nn.Parameter(torch.zeros(n_features)) if (ppv_bias and "ppv" in statistics) else None
+            nn.Parameter(torch.zeros(n_features)) if (ppv_bias and "ppv" in stat_keys) else None
         )
         self.stream_gate = nn.Parameter(torch.zeros(len(statistics)))
         self.drop = nn.Dropout(dropout)
-        self.classify = nn.Linear(pooled_dim, n_classes)
+        if isinstance(head, str):
+            self.classify = nn.Linear(self.embedding_dim, n_outputs)
+        elif head is None or isinstance(head, nn.Module):
+            self.classify = head
+        else:
+            self.classify = head(self.embedding_dim)
+            if not isinstance(self.classify, nn.Module):
+                raise ValueError(f"head factory must return an nn.Module; got {type(self.classify).__name__}")
 
     def _pool(self, feats: torch.Tensor) -> torch.Tensor:
-        """Fuse complementary statistics over the time axis into (batch, len(statistics) * n_features)."""
+        """Fuse statistics over the time axis into (batch, len(statistics) * n_features)."""
         streams = []
-        for name in self.statistics:
-            if name == "ppv":
+        for key in self._stat_keys:
+            if key == "ppv":
                 z = feats if self.ppv_bias is None else feats - self.ppv_bias[None, :, None]
-                streams.append(torch.sigmoid(z / self.ppv_tau).mean(dim=-1))
-            elif name == "bandpower":
-                # log-variance over time
-                streams.append(torch.log(feats.var(dim=-1, unbiased=False) + 1e-6))
+                stream = torch.sigmoid(z / self.ppv_tau).mean(dim=-1)
+            elif key == "logvar":
+                stream = torch.log(feats.var(dim=-1, unbiased=False) + self.logvar_eps)
+            elif key == "mean":
+                stream = feats.mean(dim=-1)
+            elif key == "max":
+                stream = feats.amax(dim=-1)
+            elif key == "std":
+                stream = torch.sqrt(feats.var(dim=-1, unbiased=False) + self.logvar_eps)
             else:
-                streams.append(feats.mean(dim=-1))
+                stream = key(feats)
+                if stream.shape != feats.shape[:2]:
+                    raise ValueError(
+                        f"custom statistic must return (batch, n_features) = {tuple(feats.shape[:2])}; got {tuple(stream.shape)}"
+                    )
+            streams.append(stream)
         return torch.cat(streams, dim=-1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Gated fusion embedding (batch, embedding_dim): the head's input, before dropout."""
         if x.dim() != 3:
             raise ValueError(f"expected (batch, n_channels, n_times); got {tuple(x.shape)}")
         if x.shape[1] != self.n_channels:
@@ -290,7 +343,13 @@ class GRFNet(nn.Module):
         # Soft per-stream gating over the pooled statistic blocks.
         gate = torch.softmax(self.stream_gate, dim=0)
         blocks = [gate[i] * pooled[:, i * self.n_features : (i + 1) * self.n_features] for i in range(len(self.statistics))]
-        return self.classify(self.drop(torch.cat(blocks, dim=1)))
+        return torch.cat(blocks, dim=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        embedding = self.forward_features(x)
+        if self.classify is None:
+            return embedding
+        return self.classify(self.drop(embedding))
 
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

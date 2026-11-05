@@ -1,12 +1,14 @@
 # GRF-Net: Geometry-aware Rocket-Fusion Network
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Licence: MIT](https://img.shields.io/badge/Licence-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![PyTorch 2.2+](https://img.shields.io/badge/PyTorch-2.2%2B-ee4c2c.svg)](https://pytorch.org/)
 
-A compact PyTorch model for multichannel time-series classification. GRF-Net
-combines a learnable spatial front-end with a frozen ROCKET-style convolution bank,
-then fuses several temporal statistics in a small end-to-end trainable head.
+Yes I AI generate my personal project README's
+
+A compact PyTorch model for multichannel time series. GRF-Net combines a
+learnable spatial front-end with a frozen ROCKET-style convolution bank, then
+fuses several temporal statistics into an embedding for a small trainable head.
 
 ## Highlights
 
@@ -16,6 +18,7 @@ then fuses several temporal statistics in a small end-to-end trainable head.
 - **Fusion pooling:** combines proportion of positive values (PPV), log-variance and mean.
 - **Rate-adaptive:** dilations can scale with the sampling rate, keeping the feature count fixed.
 - **Any input length:** one model handles sequences of different lengths.
+- **Task-agnostic head:** classification, regression, multi-label output, embeddings or a custom head.
 
 ## Architecture
 
@@ -25,16 +28,18 @@ flowchart LR
     B --> C["Convolution bank<br/>frozen + learnable kernels"]
     C --> D["BatchNorm"]
     D --> E["Fusion pooling<br/>PPV, log-variance, mean"]
-    E --> F["Gated linear head"]
-    F --> G["Logits<br/>(batch, classes)"]
+    E --> F["Gated embedding"]
+    F --> G["Head<br/>linear, custom or none"]
+    G --> H["Output<br/>(batch, n_outputs)"]
 ```
 
-| Stage | Purpose |
-| --- | --- |
-| Spatial front-end | Mixes input channels into `spatial_components` learned components. |
-| Convolution bank | Applies depthwise dilated kernels to each component, using frozen mean-centred random kernels and optional learnable kernels. |
-| Fusion pooling | Summarises each feature map over time with the selected statistics. |
-| Gated head | Weights each statistic with a learned softmax gate, then applies dropout and a linear classifier. |
+| Stage             | Purpose                                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Spatial front-end | Mixes input channels into `spatial_components` learned components.                                                            |
+| Convolution bank  | Applies depthwise dilated kernels to each component, using frozen mean-centred random kernels and optional learnable kernels. |
+| Fusion pooling    | Summarises each feature map over time with the selected statistics.                                                           |
+| Gated embedding   | Weights each statistic with a learned softmax gate. `forward_features` returns this embedding.                                |
+| Head              | Applies dropout, then a linear layer by default. Can be replaced or removed.                                                  |
 
 ## Installation
 
@@ -116,6 +121,85 @@ loss.backward()
 optimizer.step()
 ```
 
+### Outputs, embeddings and custom heads
+
+The linear head returns raw scores, so the same model serves several tasks. The
+loss decides the task: `CrossEntropyLoss` for classification, `MSELoss` for
+regression, or `BCEWithLogitsLoss` for multi-label output. `n_outputs` sets the
+output size, and `n_classes` is an alias for it:
+
+```python
+import torch
+from grfnet import GRFNet
+
+regressor = GRFNet(n_channels=8, n_outputs=1)
+tagger = GRFNet(n_channels=8, n_outputs=5)
+
+x = torch.randn(4, 8, 256)
+loss = torch.nn.functional.mse_loss(regressor(x).squeeze(1), torch.randn(4))
+```
+
+`forward_features` returns the gated embedding that the head receives. Pass
+`head=None` for a feature extractor whose `forward` returns that embedding:
+
+```python
+import torch
+from grfnet import GRFNet
+
+encoder = GRFNet(n_channels=8, head=None)
+embedding = encoder(torch.randn(4, 8, 256))  # (batch, encoder.embedding_dim)
+```
+
+`head` also accepts any `nn.Module`, or a function that receives
+`embedding_dim` and returns one:
+
+```python
+from torch import nn
+from grfnet import GRFNet
+
+model = GRFNet(
+    n_channels=8,
+    head=lambda dim: nn.Sequential(nn.Linear(dim, 32), nn.ReLU(), nn.Linear(32, 3)),
+)
+```
+
+### Pooling statistics
+
+`statistics` selects how each feature map is summarised over time. The built-in
+options are:
+
+| Name       | Statistic                                                                             |
+| ---------- | ------------------------------------------------------------------------------------- |
+| `"ppv"`    | Differentiable proportion of positive values, with a learnable threshold per feature. |
+| `"logvar"` | Log-variance. `"bandpower"` is an alias.                                              |
+| `"mean"`   | Mean.                                                                                 |
+| `"max"`    | Maximum.                                                                              |
+| `"std"`    | Standard deviation, computed as the square root of variance plus `logvar_eps`.        |
+
+A function that maps features of shape `(batch, n_features, n_times)` to
+`(batch, n_features)` can also be used:
+
+```python
+from grfnet import GRFNet
+
+def peak_to_peak(feats):
+    return feats.amax(dim=-1) - feats.amin(dim=-1)
+
+model = GRFNet(n_channels=8, n_classes=2, statistics=("ppv", "logvar", peak_to_peak))
+```
+
+### Reproducible kernel bank
+
+The frozen kernels are drawn from PyTorch's global random number generator by
+default. `bank_seed` draws them from a separate generator instead, so the bank
+is identical across runs whatever the global seed:
+
+```python
+from grfnet import GRFNet
+
+model = GRFNet(n_channels=8, n_classes=2, bank_seed=0)
+```
+
 ### Geometry-seeded spatial filters
 
 Pass sensor coordinates to initialise the spatial filters with smooth spatial
@@ -160,35 +244,39 @@ model = GRFNet(n_channels=8, n_classes=2, channel_coords=channel_positions(names
 
 ## Configuration
 
-| Argument | Default | Description |
-| --- | --- | --- |
-| `n_channels` | required | Number of input channels. |
-| `n_times` | `None` | Expected input length. Recorded only; inputs of any length are accepted. |
-| `n_classes` | required | Number of output classes. |
-| `sfreq` | `None` | Sampling rate in Hz. When set, rescales `base_dilations` from 250 Hz. |
-| `spatial_components` | `16` | Number of learned spatial components. |
-| `spatial_init` | `None` | `"random"` or `"geometry"`. `None` uses geometry when sensor positions are supplied. |
-| `channel_names` | `None` | EEG electrode names resolved against the 10-20 template. Requires the `eeg` extra. |
-| `channel_coords` | `None` | Sensor coordinates with shape `(n_channels, d)`, or `(n_channels,)` for one dimension. |
-| `kernel_length` | `9` | Convolution kernel length. Must be odd. |
-| `base_dilations` | `None` | Dilations before rescaling. `None` uses `(1, 2, 4, 8)`. |
-| `dilations` | `None` | Dilations used as given. Cannot be combined with `sfreq` or `base_dilations`. |
-| `fixed_per_group` | `2` | Frozen kernels per component and dilation. |
-| `learnable_per_group` | `1` | Learnable kernels per component and dilation. `0` gives a fully frozen bank. |
-| `statistics` | `("ppv", "bandpower", "mean")` | Pooling statistics to fuse. `"bandpower"` is log-variance over time. |
-| `ppv_tau` | `0.5` | Temperature of the differentiable PPV. |
-| `ppv_bias` | `True` | Learn a PPV threshold for each feature. |
-| `dropout` | `0.3` | Dropout rate before the classifier. |
+| Argument              | Default                     | Description                                                                                        |
+| --------------------- | --------------------------- | -------------------------------------------------------------------------------------------------- |
+| `n_channels`          | required                    | Number of input channels.                                                                          |
+| `n_times`             | `None`                      | Expected input length. Recorded only; inputs of any length are accepted.                           |
+| `n_classes`           | `None`                      | Alias of `n_outputs`.                                                                              |
+| `n_outputs`           | `None`                      | Output size of the linear head. Required unless `head` is not `"linear"`.                          |
+| `head`                | `"linear"`                  | `"linear"`, `None` for embeddings, an `nn.Module`, or a function of `embedding_dim` returning one. |
+| `sfreq`               | `None`                      | Sampling rate in Hz. When set, rescales `base_dilations` from 250 Hz.                              |
+| `spatial_components`  | `16`                        | Number of learned spatial components.                                                              |
+| `spatial_init`        | `None`                      | `"random"` or `"geometry"`. `None` uses geometry when sensor positions are supplied.               |
+| `channel_names`       | `None`                      | EEG electrode names resolved against the 10-20 template. Requires the `eeg` extra.                 |
+| `channel_coords`      | `None`                      | Sensor coordinates with shape `(n_channels, d)`, or `(n_channels,)` for one dimension.             |
+| `kernel_length`       | `9`                         | Convolution kernel length. Must be odd.                                                            |
+| `base_dilations`      | `None`                      | Dilations before rescaling. `None` uses `(1, 2, 4, 8)`.                                            |
+| `dilations`           | `None`                      | Dilations used as given. Cannot be combined with `sfreq` or `base_dilations`.                      |
+| `fixed_per_group`     | `2`                         | Frozen kernels per component and dilation.                                                         |
+| `learnable_per_group` | `1`                         | Learnable kernels per component and dilation. `0` gives a fully frozen bank.                       |
+| `statistics`          | `("ppv", "logvar", "mean")` | Pooling statistics to fuse. Names or functions.                                                    |
+| `ppv_tau`             | `0.5`                       | Temperature of the differentiable PPV.                                                             |
+| `ppv_bias`            | `True`                      | Learn a PPV threshold for each feature.                                                            |
+| `logvar_eps`          | `1e-6`                      | Added to the variance in `"logvar"` and `"std"`.                                                   |
+| `dropout`             | `0.3`                       | Dropout rate before the head.                                                                      |
+| `bank_seed`           | `None`                      | Seed for the frozen kernels. `None` uses the global generator.                                     |
 
 ## Model size
 
 Trainable parameters and frozen kernel weights with the default configuration:
 
 | Channels | Classes | Trainable | Frozen |
-| --- | --- | --- | --- |
-| 3 | 2 | 2,389 | 1,152 |
-| 22 | 4 | 3,847 | 1,152 |
-| 64 | 10 | 7,981 | 1,152 |
+| -------- | ------- | --------- | ------ |
+| 3        | 2       | 2,389     | 1,152  |
+| 22       | 4       | 3,847     | 1,152  |
+| 64       | 10      | 7,981     | 1,152  |
 
 Use `model.count_parameters()` to get the trainable count for any configuration.
 
@@ -219,11 +307,11 @@ If you use GRF-Net in your work, please cite this repository:
 
 GRF-Net builds on the following work:
 
-- A. Dempster, F. Petitjean and G. I. Webb, "ROCKET: exceptionally fast and accurate time series classification using random convolutional kernels", *Data Mining and Knowledge Discovery* 34, 2020.
-- A. Dempster, D. F. Schmidt and G. I. Webb, "MiniRocket: a very fast (almost) deterministic transform for time series classification", *KDD*, 2021.
-- K. K. Ang et al., "Filter Bank Common Spatial Pattern (FBCSP) in brain-computer interface", *IJCNN*, 2008.
-- R. T. Schirrmeister et al., "Deep learning with convolutional neural networks for EEG decoding and visualization", *Human Brain Mapping* 38(11), 2017.
+- A. Dempster, F. Petitjean and G. I. Webb, "ROCKET: exceptionally fast and accurate time series classification using random convolutional kernels", _Data Mining and Knowledge Discovery_ 34, 2020.
+- A. Dempster, D. F. Schmidt and G. I. Webb, "MiniRocket: a very fast (almost) deterministic transform for time series classification", _KDD_, 2021.
+- K. K. Ang et al., "Filter Bank Common Spatial Pattern (FBCSP) in brain-computer interface", _IJCNN_, 2008.
+- R. T. Schirrmeister et al., "Deep learning with convolutional neural networks for EEG decoding and visualization", _Human Brain Mapping_ 38(11), 2017.
 
-## License
+## Licence
 
 Released under the [MIT License](LICENSE).
