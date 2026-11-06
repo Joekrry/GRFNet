@@ -63,6 +63,12 @@ MNE-Python:
 pip install -e ".[eeg]"
 ```
 
+ONNX export needs the `onnx` extra, which adds onnx, onnxscript and ONNX Runtime:
+
+```bash
+pip install -e ".[onnx]"
+```
+
 ## Quick start
 
 ```python
@@ -242,6 +248,57 @@ names = ["Fz", "C3", "Cz", "C4", "Pz", "O1", "O2", "F3"]
 model = GRFNet(n_channels=8, n_classes=2, channel_coords=channel_positions(names, ndim=3))
 ```
 
+## Saving and deployment
+
+### Checkpoints
+
+`save` writes the model's configuration, weights and optional metadata to one
+file. `load` rebuilds the model from it and returns it in eval mode:
+
+```python
+from grfnet import GRFNet, load_checkpoint
+
+model = GRFNet(n_channels=8, n_classes=2)
+model.save("grfnet.pt", metadata={"epoch": 40})
+
+restored = GRFNet.load("grfnet.pt")
+print(load_checkpoint("grfnet.pt")["metadata"])  # {'epoch': 40}
+```
+
+Checkpoints are read with `torch.load(..., weights_only=True)`. `get_config`
+returns the constructor arguments as JSON-compatible values, and `from_config`
+builds an untrained model from them. Custom heads and custom statistics are
+Python objects and cannot be stored: for those models, rebuild the model in code
+and load its `state_dict`.
+
+### Export and compilation
+
+| Target | How | Notes |
+| --- | --- | --- |
+| `torch.export` | `torch.export.export(model, (x,), dynamic_shapes=...)` | Batch size and input length can be dynamic. |
+| ONNX | `export_onnx(model, "grfnet.onnx")` | Batch size and input length are dynamic by default. Needs the `onnx` extra. |
+| TorchScript | `torch.jit.script(model)` | Not available with custom statistics. PyTorch no longer supports TorchScript on Python 3.14 or later. |
+| `torch.compile` | `torch.compile(model)` | Compiles as a single graph. |
+
+```python
+import torch
+from grfnet import GRFNet, export_onnx
+
+model = GRFNet(n_channels=8, n_classes=2).eval()
+export_onnx(model, "grfnet.onnx", n_times=256)
+
+batch, n_times = torch.export.Dim("batch", min=1), torch.export.Dim("n_times", min=2)
+program = torch.export.export(model, (torch.randn(2, 8, 256),), dynamic_shapes={"x": {0: batch, 2: n_times}})
+```
+
+The ONNX file has one input, `input`, of shape `(batch, n_channels, n_times)`,
+and one output, `output`.
+
+### Mixed precision
+
+The model runs under `torch.autocast`, with `float16` on CUDA and `bfloat16` on
+CPU.
+
 ## Configuration
 
 | Argument              | Default                     | Description                                                                                        |
@@ -288,6 +345,13 @@ pip install -e ".[dev]"
 
 ```bash
 python -m pytest
+```
+
+Tests for optional features are skipped when their extra is not installed. To
+run every test, install all extras:
+
+```bash
+pip install -e ".[dev,eeg,onnx]"
 ```
 
 ## Citation

@@ -15,6 +15,12 @@ def requires_mne():
     )
 
 
+def requires_onnx():
+    """Skip marker for when the onnx extra is not installed."""
+    missing = [m for m in ("onnx", "onnxscript", "onnxruntime") if importlib.util.find_spec(m) is None]
+    return pytest.mark.skipif(bool(missing), reason=f"not installed: {', '.join(missing)}")
+
+
 def requires_torch():
     """Skip marker for when PyTorch is not installed."""
     return pytest.mark.skipif(

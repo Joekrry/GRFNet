@@ -1,0 +1,171 @@
+<mxfile host="65bd71144e">
+    <diagram id="plan" name="Development plan">
+        <mxGraphModel dx="1260" dy="541" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="laneA" parent="1" style="swimlane;html=1;startSize=30;container=0;fontStyle=1;fontSize=13;fillColor=#F5F5F5;strokeColor=#666666;swimlaneFillColor=#FAFAFA;" value="" vertex="1">
+                    <mxGeometry height="940" width="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="A1" parent="laneA" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#D5E8D4;strokeColor=#82B366;" value="A1 Port GRFNet" vertex="1">
+                    <mxGeometry height="40" width="220" x="20" y="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="A2" parent="laneA" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#D5E8D4;strokeColor=#82B366;" value="A2 Behaviour lock, naming, input" vertex="1">
+                    <mxGeometry height="40" width="220" x="20" y="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="A3" parent="laneA" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#D5E8D4;strokeColor=#82B366;" value="A3 Geometry seeding" vertex="1">
+                    <mxGeometry height="40" width="220" x="20" y="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="A4" parent="laneA" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#DAE8FC;strokeColor=#6C8EBF;" value="A4 Heads, statistics, bank seed" vertex="1">
+                    <mxGeometry height="40" width="220" x="20" y="270" as="geometry"/>
+                </mxCell>
+                <mxCell id="A5" parent="laneA" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="A5 Deployment and persistence" vertex="1">
+                    <mxGeometry height="40" width="220" x="20" y="340" as="geometry"/>
+                </mxCell>
+                <mxCell id="A6" parent="laneA" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="A6 Package layout, tooling, v0.1.0" vertex="1">
+                    <mxGeometry height="40" width="220" x="20" y="410" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" edge="1" parent="laneA" source="A1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;" target="A2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2" edge="1" parent="laneA" source="A2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;" target="A3">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" edge="1" parent="laneA" source="A3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;" target="A4">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4" edge="1" parent="laneA" source="A4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;" target="A5">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e5" edge="1" parent="laneA" source="A5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;" target="A6">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="laneB" parent="1" style="swimlane;html=1;startSize=30;container=0;fontStyle=1;fontSize=13;fillColor=#F5F5F5;strokeColor=#666666;swimlaneFillColor=#FAFAFA;" value="" vertex="1">
+                    <mxGeometry height="940" width="480" x="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="B1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B1 EEGMMIDB loader and dataset report" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="R0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;dashed=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="«run»&lt;br&gt;R0 Dataset report" vertex="1">
+                    <mxGeometry height="40" width="155" x="585" y="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="B2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B2 Training and evaluation pipeline" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="126" as="geometry"/>
+                </mxCell>
+                <mxCell id="B3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B3 Run reports and visualisations" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="202" as="geometry"/>
+                </mxCell>
+                <mxCell id="R1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;dashed=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="«run»&lt;br&gt;R1 GRFNet baseline" vertex="1">
+                    <mxGeometry height="40" width="155" x="585" y="202" as="geometry"/>
+                </mxCell>
+                <mxCell id="B4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B4 Reference baselines" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="278" as="geometry"/>
+                </mxCell>
+                <mxCell id="R2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;dashed=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="«run»&lt;br&gt;R2 Baselines" vertex="1">
+                    <mxGeometry height="40" width="155" x="585" y="278" as="geometry"/>
+                </mxCell>
+                <mxCell id="B5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B5 FastGRFNet" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="354" as="geometry"/>
+                </mxCell>
+                <mxCell id="B6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B6 Episodic meta-training" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="430" as="geometry"/>
+                </mxCell>
+                <mxCell id="R3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;dashed=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="«run»&lt;br&gt;R3 FastGRFNet ablation" vertex="1">
+                    <mxGeometry height="40" width="155" x="585" y="430" as="geometry"/>
+                </mxCell>
+                <mxCell id="B7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B7 GRFNetSeq" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="506" as="geometry"/>
+                </mxCell>
+                <mxCell id="R4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;dashed=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="«run»&lt;br&gt;R4 GRFNetSeq" vertex="1">
+                    <mxGeometry height="40" width="155" x="585" y="506" as="geometry"/>
+                </mxCell>
+                <mxCell id="B8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B8 GRFNet2d" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="582" as="geometry"/>
+                </mxCell>
+                <mxCell id="R5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;dashed=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="«run»&lt;br&gt;R5 GRFNet2d" vertex="1">
+                    <mxGeometry height="40" width="155" x="585" y="582" as="geometry"/>
+                </mxCell>
+                <mxCell id="B9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B9 GRFRidge" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="658" as="geometry"/>
+                </mxCell>
+                <mxCell id="R6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;dashed=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="«run»&lt;br&gt;R6 GRFRidge" vertex="1">
+                    <mxGeometry height="40" width="155" x="585" y="658" as="geometry"/>
+                </mxCell>
+                <mxCell id="B10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B10 Benchmark runner and comparison" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="734" as="geometry"/>
+                </mxCell>
+                <mxCell id="R7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;dashed=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="«run»&lt;br&gt;R7 Final benchmark" vertex="1">
+                    <mxGeometry height="40" width="155" x="585" y="734" as="geometry"/>
+                </mxCell>
+                <mxCell id="B11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontSize=12;fillColor=#FFFFFF;strokeColor=#333333;" value="B11 Weights, tutorials, results, v0.2.0" vertex="1">
+                    <mxGeometry height="40" width="240" x="310" y="810" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6" edge="1" parent="1" source="A6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="B1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="280" y="430"/>
+                            <mxPoint x="280" y="70"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e7" edge="1" parent="1" source="B1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="R0">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e8" edge="1" parent="1" source="R0" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="B2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e9" edge="1" parent="1" source="B2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;" target="B3">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e10" edge="1" parent="1" source="B3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="R1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e11" edge="1" parent="1" source="R1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="B4">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e12" edge="1" parent="1" source="B4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="R2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e13" edge="1" parent="1" source="R2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="B5">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e14" edge="1" parent="1" source="B5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;" target="B6">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e15" edge="1" parent="1" source="B6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="R3">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e16" edge="1" parent="1" source="R3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="B7">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e17" edge="1" parent="1" source="B7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="R4">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e18" edge="1" parent="1" source="R4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="B8">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e19" edge="1" parent="1" source="B8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="R5">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e20" edge="1" parent="1" source="R5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="B9">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e21" edge="1" parent="1" source="B9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="R6">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e22" edge="1" parent="1" source="R6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="B10">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e23" edge="1" parent="1" source="B10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="R7">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e24" edge="1" parent="1" source="R7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#333333;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="B11">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="modelCard" parent="1" style="shape=note;whiteSpace=wrap;html=1;size=16;align=left;verticalAlign=top;spacingLeft=10;spacingRight=10;spacingTop=6;fontSize=11;fillColor=#FFFFFF;strokeColor=#666666;" value="&lt;b style=&quot;font-size:13px&quot;&gt;Model family&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;GRFNet&lt;/b&gt; (A1&amp;ndash;A4)&lt;ul style=&quot;margin:2px 0 8px 0;padding-left:16px&quot;&gt;&lt;li&gt;Stateless: one prediction per input&lt;/li&gt;&lt;li&gt;Learnable spatial filters, optionally seeded from sensor positions&lt;/li&gt;&lt;li&gt;Frozen ROCKET-style dilated kernel bank plus learnable kernels&lt;/li&gt;&lt;li&gt;PPV, log-variance and mean pooling fused by a learned gate&lt;/li&gt;&lt;li&gt;Linear, custom or no head; any input length&lt;/li&gt;&lt;/ul&gt;&lt;b&gt;FastGRFNet&lt;/b&gt; (B5&amp;ndash;B6)&lt;ul style=&quot;margin:2px 0 8px 0;padding-left:16px&quot;&gt;&lt;li&gt;Fast-weight spatial layer rewritten by a delta rule after each trial&lt;/li&gt;&lt;li&gt;Explicit state, reset at the start of each subject&lt;/li&gt;&lt;li&gt;Write modes: off, unsupervised, label_feedback&lt;/li&gt;&lt;li&gt;With writes off, outputs match GRFNet&lt;/li&gt;&lt;li&gt;Meta-trained on subject episodes&lt;/li&gt;&lt;/ul&gt;&lt;b&gt;GRFNetSeq&lt;/b&gt; (B7)&lt;ul style=&quot;margin:2px 0 8px 0;padding-left:16px&quot;&gt;&lt;li&gt;Causal convolutions that only look back in time&lt;/li&gt;&lt;li&gt;A prediction at every time step&lt;/li&gt;&lt;li&gt;Streams input in chunks, carrying state between them&lt;/li&gt;&lt;li&gt;For continuous decoding and event onset detection&lt;/li&gt;&lt;/ul&gt;&lt;b&gt;GRFNet2d&lt;/b&gt; (B8)&lt;ul style=&quot;margin:2px 0 8px 0;padding-left:16px&quot;&gt;&lt;li&gt;The same design with 2-D and 3-D kernel banks&lt;/li&gt;&lt;li&gt;Inputs are images or volumes&lt;/li&gt;&lt;li&gt;On EEGMMIDB: spectrograms, with electrodes as image channels&lt;/li&gt;&lt;/ul&gt;&lt;b&gt;GRFRidge&lt;/b&gt; (B9)&lt;ul style=&quot;margin:2px 0 8px 0;padding-left:16px&quot;&gt;&lt;li&gt;Frozen GRF features with a closed-form ridge classifier&lt;/li&gt;&lt;li&gt;No backpropagation&lt;/li&gt;&lt;li&gt;scikit-learn fit and predict API&lt;/li&gt;&lt;/ul&gt;&lt;b&gt;Reference baselines&lt;/b&gt; (B4)&lt;ul style=&quot;margin:2px 0 0 0;padding-left:16px&quot;&gt;&lt;li&gt;EEGNet and ShallowConvNet from braindecode, for comparison only&lt;/li&gt;&lt;/ul&gt;" vertex="1">
+                    <mxGeometry height="760" width="380" x="790" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

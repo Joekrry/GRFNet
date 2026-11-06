@@ -1,11 +1,12 @@
-from __future__ import annotations
-
 import math
 import operator
 
+import numpy as np
 import torch
 from torch import nn
 
+CHECKPOINT_FORMAT = "grfnet-checkpoint-1"
+_CUSTOM = "custom"
 _STATISTICS = ("ppv", "logvar", "mean")
 _BUILTIN_STATISTICS = ("ppv", "logvar", "mean", "max", "std", "bandpower")
 _STATISTIC_ALIASES = {"bandpower": "logvar"}
@@ -183,11 +184,19 @@ class RocketFeatureBank(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        fixed_maps = []
+        for conv in self.fixed:
+            fixed_maps.append(conv(x))
+        if self.learnable is None:
+            return torch.cat(fixed_maps, dim=1)  # (batch, n_features, n_times)
+        learnable_maps = []
+        for conv in self.learnable:
+            learnable_maps.append(conv(x))
+        # Interleaved per dilation: fixed group, then learnable group.
         maps = []
-        for i, fixed in enumerate(self.fixed):
-            maps.append(fixed(x))
-            if self.learnable is not None:
-                maps.append(self.learnable[i](x))
+        for i in range(len(fixed_maps)):
+            maps.append(fixed_maps[i])
+            maps.append(learnable_maps[i])
         return torch.cat(maps, dim=1)  # (batch, n_features, n_times)
 
 
@@ -222,6 +231,29 @@ class GRFNet(nn.Module):
         bank_seed: int | None = None,
     ) -> None:
         super().__init__()
+        self._config = {
+            "n_channels": n_channels,
+            "n_times": n_times,
+            "n_classes": n_classes,
+            "n_outputs": n_outputs,
+            "head": head if head is None or isinstance(head, str) else _CUSTOM,
+            "sfreq": sfreq,
+            "spatial_components": spatial_components,
+            "spatial_init": spatial_init,
+            "channel_names": channel_names,
+            "channel_coords": channel_coords,
+            "kernel_length": kernel_length,
+            "base_dilations": base_dilations,
+            "dilations": dilations,
+            "fixed_per_group": fixed_per_group,
+            "learnable_per_group": learnable_per_group,
+            "statistics": tuple(s if isinstance(s, str) else _CUSTOM for s in statistics),
+            "ppv_tau": ppv_tau,
+            "ppv_bias": ppv_bias,
+            "logvar_eps": logvar_eps,
+            "dropout": dropout,
+            "bank_seed": bank_seed,
+        }
         if n_outputs is None:
             n_outputs = n_classes
         elif n_classes is not None and n_classes != n_outputs:
@@ -269,7 +301,10 @@ class GRFNet(nn.Module):
         self.n_classes = n_outputs
         self.sfreq = sfreq
         self.statistics = statistics
-        self._stat_keys = stat_keys
+        self.n_statistics = len(statistics)
+        # Built-in names, or "custom" with the function kept in _custom_statistics.
+        self._stat_names = [key if isinstance(key, str) else _CUSTOM for key in stat_keys]
+        self._custom_statistics = {i: key for i, key in enumerate(stat_keys) if not isinstance(key, str)}
         self.ppv_tau = ppv_tau
         self.logvar_eps = logvar_eps
 
@@ -307,10 +342,24 @@ class GRFNet(nn.Module):
             if not isinstance(self.classify, nn.Module):
                 raise ValueError(f"head factory must return an nn.Module; got {type(self.classify).__name__}")
 
+    def __prepare_scriptable__(self):
+        if self._custom_statistics:
+            raise ValueError("custom statistics are Python functions and cannot be compiled with TorchScript; use torch.export instead")
+        return self
+
+    @torch.jit.unused
+    def _custom_statistic(self, index: int, feats: torch.Tensor) -> torch.Tensor:
+        stream = self._custom_statistics[index](feats)
+        if stream.shape != feats.shape[:2]:
+            raise ValueError(
+                f"custom statistic must return (batch, n_features) = {tuple(feats.shape[:2])}; got {tuple(stream.shape)}"
+            )
+        return stream
+
     def _pool(self, feats: torch.Tensor) -> torch.Tensor:
         """Fuse statistics over the time axis into (batch, len(statistics) * n_features)."""
         streams = []
-        for key in self._stat_keys:
+        for i, key in enumerate(self._stat_names):
             if key == "ppv":
                 z = feats if self.ppv_bias is None else feats - self.ppv_bias[None, :, None]
                 stream = torch.sigmoid(z / self.ppv_tau).mean(dim=-1)
@@ -323,18 +372,14 @@ class GRFNet(nn.Module):
             elif key == "std":
                 stream = torch.sqrt(feats.var(dim=-1, unbiased=False) + self.logvar_eps)
             else:
-                stream = key(feats)
-                if stream.shape != feats.shape[:2]:
-                    raise ValueError(
-                        f"custom statistic must return (batch, n_features) = {tuple(feats.shape[:2])}; got {tuple(stream.shape)}"
-                    )
+                stream = self._custom_statistic(i, feats)
             streams.append(stream)
         return torch.cat(streams, dim=-1)
 
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
         """Gated fusion embedding (batch, embedding_dim): the head's input, before dropout."""
         if x.dim() != 3:
-            raise ValueError(f"expected (batch, n_channels, n_times); got {tuple(x.shape)}")
+            raise ValueError(f"expected (batch, n_channels, n_times); got {x.shape}")
         if x.shape[1] != self.n_channels:
             raise ValueError(f"expected {self.n_channels} channels; got {x.shape[1]}")
         components = self.spatial(x)  # (batch, spatial_components, n_times)
@@ -342,7 +387,9 @@ class GRFNet(nn.Module):
         pooled = self._pool(feats)
         # Soft per-stream gating over the pooled statistic blocks.
         gate = torch.softmax(self.stream_gate, dim=0)
-        blocks = [gate[i] * pooled[:, i * self.n_features : (i + 1) * self.n_features] for i in range(len(self.statistics))]
+        blocks = []
+        for i in range(self.n_statistics):
+            blocks.append(gate[i] * pooled[:, i * self.n_features : (i + 1) * self.n_features])
         return torch.cat(blocks, dim=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -351,5 +398,60 @@ class GRFNet(nn.Module):
             return embedding
         return self.classify(self.drop(embedding))
 
+    @torch.jit.unused
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+    @torch.jit.unused
+    def get_config(self) -> dict:
+        """Constructor arguments as JSON-compatible values. Raises for custom heads and statistics, which cannot be stored."""
+        config = dict(self._config)
+        if config["head"] == _CUSTOM:
+            raise ValueError("a custom head cannot be stored in a config; rebuild the model in code and load its state_dict")
+        if _CUSTOM in config["statistics"]:
+            raise ValueError("custom statistics cannot be stored in a config; rebuild the model in code and load its state_dict")
+        config["statistics"] = list(config["statistics"])
+        for key in ("channel_names", "channel_coords", "base_dilations", "dilations"):
+            if config[key] is not None:
+                config[key] = np.asarray(config[key]).tolist()
+        return config
+
+    @classmethod
+    def from_config(cls, config: dict) -> "GRFNet":
+        """Build an untrained model from get_config() output."""
+        return cls(**config)
+
+    @torch.jit.unused
+    def save(self, path, *, metadata: dict | None = None) -> None:
+        """Write config, weights and optional metadata (plain Python values) to a checkpoint file."""
+        from . import __version__
+
+        torch.save(
+            {
+                "format": CHECKPOINT_FORMAT,
+                "model": type(self).__name__,
+                "grfnet_version": __version__,
+                "config": self.get_config(),
+                "state_dict": self.state_dict(),
+                "metadata": {} if metadata is None else dict(metadata),
+            },
+            path,
+        )
+
+    @classmethod
+    def load(cls, path, *, map_location="cpu") -> "GRFNet":
+        """Rebuild a model saved with save(). Returns it in eval mode."""
+        checkpoint = load_checkpoint(path, map_location=map_location)
+        if checkpoint["model"] != cls.__name__:
+            raise ValueError(f"checkpoint holds a {checkpoint['model']}, not a {cls.__name__}")
+        model = cls.from_config(checkpoint["config"])
+        model.load_state_dict(checkpoint["state_dict"])
+        return model.eval()
+
+
+def load_checkpoint(path, *, map_location="cpu") -> dict:
+    """Read a checkpoint written by save() without building the model. Keys: format, model, grfnet_version, config, state_dict, metadata."""
+    checkpoint = torch.load(path, map_location=map_location, weights_only=True)
+    if not isinstance(checkpoint, dict) or checkpoint.get("format") != CHECKPOINT_FORMAT:
+        raise ValueError(f"{path} is not a GRFNet checkpoint")
+    return checkpoint
