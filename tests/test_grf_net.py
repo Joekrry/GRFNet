@@ -106,7 +106,7 @@ def test_deterministic_init():
     a = GRFNet(n_channels=10, n_times=500, n_classes=4, sfreq=125.0)
     torch.manual_seed(0)
     b = GRFNet(n_channels=10, n_times=500, n_classes=4, sfreq=125.0)
-    assert all(torch.equal(pa, pb) for pa, pb in zip(a.parameters(), b.parameters()))
+    assert all(torch.equal(pa, pb) for pa, pb in zip(a.parameters(), b.parameters(), strict=True))
 
 
 @requires_torch()
@@ -143,8 +143,8 @@ def test_unknown_channel_name_raises():
 def test_channel_names_select_geometry_and_match_explicit_coords():
     import torch
 
-    from grfnet.channels import channel_positions
     from grfnet import GRFNet
+    from grfnet.channels import channel_positions
 
     names = ["C3", "Cz", "C4", "Pz"]
     # supplying sensor positions implies geometry seeding without asking for it

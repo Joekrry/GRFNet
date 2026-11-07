@@ -4,12 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grfnet"
-description = "GRF-Net: a ROCKET-style fusion network for multichannel time series"
+description = "GRF-Net: Geometry-aware Rocket-Fusion Network models for multichannel time series"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Joe Kerry" }]
 dynamic = ["version"]
+keywords = ["deep learning", "pytorch", "time series", "ROCKET", "EEG"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 dependencies = [
     "torch>=2.2",
@@ -19,7 +25,11 @@ dependencies = [
 [project.optional-dependencies]
 eeg = ["mne>=1.6"]
 onnx = ["onnx>=1.23", "onnxscript>=0.7", "onnxruntime>=1.31"]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.17"]
+
+[project.urls]
+Repository = "https://github.com/Joekrry/GRFNet"
+Changelog = "https://github.com/Joekrry/GRFNet/blob/master/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
 version = { attr = "grfnet.__version__" }
@@ -27,6 +37,22 @@ version = { attr = "grfnet.__version__" }
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+grfnet = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["src/dataset"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["grfnet"]
+known-local-folder = ["conftest", "golden_cases"]

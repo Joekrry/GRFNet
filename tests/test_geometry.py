@@ -25,7 +25,7 @@ def test_two_dimensional_patterns_keep_their_order():
     x, y = coords[:, 0], coords[:, 1]
     expected = [x, y, x * x + y * y, x * y, x * x - y * y]
     rows = _rows(GRFNet(8, n_classes=2, channel_coords=coords))
-    for row, pattern in zip(rows, expected):
+    for row, pattern in zip(rows, expected, strict=False):
         assert np.allclose(row, _normed(pattern), atol=1e-5)
 
 

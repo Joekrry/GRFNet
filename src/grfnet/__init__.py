@@ -1,12 +1,12 @@
-"""GRF-Net PyTorch model."""
-
-from __future__ import annotations
+"""GRF-Net PyTorch models."""
 
 from .channels import channel_positions
+from .checkpoint import load_checkpoint
 from .export import export_onnx
-from .model import GRFNet, RocketFeatureBank, SpatialFrontEnd, load_checkpoint, scale_dilations
+from .layers import RocketFeatureBank, SpatialFrontEnd, scale_dilations
+from .models import GRFNet
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
 
 __all__ = [
     "GRFNet",

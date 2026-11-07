@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "GRF-Net: Geometry-aware Rocket-Fusion Network"
+type: software
+authors:
+  - family-names: Kerry
+    given-names: Joe
+version: 0.1.0
+date-released: 2026-11-07
+license: MIT
+repository-code: "https://github.com/Joekrry/GRFNet"
+keywords:
+  - deep learning
+  - pytorch
+  - time series
+  - ROCKET
+  - EEG
