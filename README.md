@@ -42,6 +42,7 @@ features:
 | ------ | -------------------------------- | ------------------------------------ |
 | `eeg`  | MNE-Python                       | Looking up EEG electrode positions   |
 | `onnx` | onnx, onnxscript, ONNX Runtime   | `export_onnx`                        |
+| `viz`  | Matplotlib                       | Dataset reports and figures          |
 | `dev`  | pytest, Ruff                     | Running the tests and linter         |
 
 ```bash
@@ -63,6 +64,27 @@ logits = model(x)             # (batch, n_classes)
 The model returns raw scores for use with `torch.nn.CrossEntropyLoss`. See the
 [GRFNet README](src/grfnet/models/grfnet/README.md) for regression, embeddings,
 custom heads, pooling statistics and geometry-seeded spatial filters.
+
+## Datasets
+
+`grfnet.data` loads PhysioNet's EEG Motor Movement/Imagery Dataset (EEGMMIDB)
+into epoched arrays and writes dataset reports. The data is not part of the
+repository. See the [datasets README](src/grfnet/data/README.md) for where to
+put it, the available tasks and the loading options.
+
+```python
+from grfnet.data import load_epochs
+
+data = load_epochs(task="imagery_lr", subjects="1-10")  # data.X: (n_trials, 64, 640)
+```
+
+To write the dataset figures and summary tables to `runs/r0_dataset/`:
+
+```bash
+python -m grfnet.data report --cache-dir runs/cache
+```
+
+Run outputs go under `runs/`, which Git ignores.
 
 ## Saving and deployment
 
@@ -124,6 +146,7 @@ src/grfnet/
   checkpoint.py      checkpoint files
   export.py          ONNX export
   channels.py        EEG electrode positions (eeg extra)
+  data/              dataset loaders and dataset reports, with a README
   models/
     grfnet/          GRFNet model and its README
 tests/               unit tests and reference outputs
@@ -139,11 +162,12 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-Tests for optional features are skipped when their extra is not installed. To
-run every test, install all extras:
+Tests for optional features are skipped when their extra is not installed.
+Tests that read the EEGMMIDB files run only when the dataset is present. To run
+every other test, install all extras:
 
 ```bash
-pip install -e ".[dev,eeg,onnx]"
+pip install -e ".[dev,eeg,onnx,viz]"
 ```
 
 To check the code with the linter:

@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `grfnet.data`: EEGMMIDB loader with six motor tasks, an optional rest class, resampling, band-pass filtering, channel selection and per-subject caching.
+- `python -m grfnet.data report`: dataset figures (montage, class balance, amplitude, example trials, spectra, ERD/ERS, topomaps), `summary.json`, `recordings.csv` and `report.md`.
+- `viz` extra with Matplotlib. Run outputs go under the ignored `runs/` folder.
+
 ## [0.1.0] - 2026-11-07
 
 First release of GRF-Net as a standalone package.
