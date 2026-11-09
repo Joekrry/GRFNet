@@ -106,10 +106,12 @@ def default_root() -> Path:
     return Path(os.environ.get(ROOT_ENV, DEFAULT_ROOT))
 
 
-def parse_subjects(spec: str | Iterable[int] | None) -> list[int] | None:
-    """Subject numbers from '1-10,12' style text or an iterable. None means all."""
+def parse_subjects(spec: str | int | Iterable[int] | None) -> list[int] | None:
+    """Subject numbers from '1-10,12' style text, one number or an iterable. None means all."""
     if spec is None:
         return None
+    if isinstance(spec, int):
+        spec = [spec]
     if isinstance(spec, str):
         subjects: list[int] = []
         for part in spec.replace(" ", "").split(","):
@@ -266,7 +268,8 @@ def _load_subject(root, subject, events, class_names, params, cache_dir) -> dict
     return part
 
 
-def _read_run(path: Path, sfreq: float, l_freq: float | None, h_freq: float | None):
+def _read_run(path: Path, sfreq: float, l_freq: float | None,
+              h_freq: float | None) -> tuple[np.ndarray, list[str], np.ndarray, np.ndarray]:
     """Signal in microvolts at sfreq, cleaned channel names, onsets (s) and annotation codes."""
     mne = _import_mne()
     raw = mne.io.read_raw_edf(path, preload=True, verbose="error")
@@ -274,7 +277,7 @@ def _read_run(path: Path, sfreq: float, l_freq: float | None, h_freq: float | No
         raw.filter(l_freq, h_freq, verbose="error")
     if raw.info["sfreq"] != sfreq:
         raw.resample(sfreq, verbose="error")
-    signal = (raw.get_data() * 1e6).astype(np.float32)
+    signal = (np.asarray(raw.get_data()) * 1e6).astype(np.float32)
     names = [clean_channel_name(n) for n in raw.ch_names]
     return signal, names, np.asarray(raw.annotations.onset), np.asarray(raw.annotations.description)
 

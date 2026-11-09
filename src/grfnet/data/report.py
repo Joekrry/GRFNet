@@ -344,7 +344,8 @@ def _topomaps(epochs: EpochsData):
         image, _ = mne.viz.plot_topomap(maps[c], info, axes=ax, show=False, cmap="RdBu_r",
                                         vlim=(-limit, limit), contours=0, sensors=True)
         _title(ax, _class_label(epochs.class_names[c]))
-    bar = fig.colorbar(image, ax=list(axes[0]), shrink=0.8)
-    bar.set_label("Mu power change (%)", color=MUTED, fontsize=9)
-    bar.ax.tick_params(colors=MUTED, labelsize=8)
+    if image is not None:
+        bar = fig.colorbar(image, ax=list(axes[0]), shrink=0.8)
+        bar.set_label("Mu power change (%)", color=MUTED, fontsize=9)
+        bar.ax.tick_params(colors=MUTED, labelsize=8)
     return fig

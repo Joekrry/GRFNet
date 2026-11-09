@@ -49,7 +49,11 @@ def _coordinate_patterns(coords: torch.Tensor) -> list[torch.Tensor]:
     """Smooth patterns over sensors at coords (n_channels, d): one gradient per axis, then the squared radius, cross products and differences of squares."""
     axes = list(coords.T)
     family = list(axes)
-    family.append(sum(a * a for a in axes))
+    # Left-to-right sum matches the reference outputs bit for bit.
+    radius = axes[0] * axes[0]
+    for a in axes[1:]:
+        radius = radius + a * a
+    family.append(radius)
     family += [axes[i] * axes[j] for i in range(len(axes)) for j in range(i + 1, len(axes))]
     family += [axes[i] * axes[i] - axes[i + 1] * axes[i + 1] for i in range(len(axes) - 1)]
     return family

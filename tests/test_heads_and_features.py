@@ -44,6 +44,7 @@ def test_forward_features_feed_the_head():
     with torch.no_grad():
         embedding = model.forward_features(x)
         assert embedding.shape == (4, model.embedding_dim)
+        assert model.classify is not None
         assert torch.allclose(model.classify(embedding), model(x))
 
 
@@ -124,7 +125,8 @@ def test_head_factory_must_return_module():
     from grfnet import GRFNet
 
     with pytest.raises(ValueError, match="must return an nn.Module"):
-        GRFNet(6, head=lambda dim: "not a module")
+        # Deliberately wrong factory type.
+        GRFNet(6, head=lambda dim: "not a module")  # pyright: ignore[reportArgumentType]
 
 
 @requires_torch()
@@ -136,11 +138,13 @@ def test_regression_and_multilabel_train():
     x = torch.randn(8, 6, 96)
     regressor = GRFNet(6, n_outputs=1)
     torch.nn.functional.mse_loss(regressor(x).squeeze(1), torch.randn(8)).backward()
+    assert isinstance(regressor.classify, torch.nn.Linear)
     assert regressor.classify.weight.grad is not None
 
     tagger = GRFNet(6, n_outputs=4)
     targets = torch.randint(0, 2, (8, 4)).float()
     torch.nn.functional.binary_cross_entropy_with_logits(tagger(x), targets).backward()
+    assert isinstance(tagger.classify, torch.nn.Linear)
     assert tagger.classify.weight.grad is not None
 
 
@@ -252,7 +256,9 @@ def test_bank_seed_kernels_stay_mean_centred():
 
     model = _seeded(n_channels=6, n_classes=2, bank_seed=3)
     for conv in model.bank.fixed:
-        assert torch.allclose(conv.weight.mean(dim=-1), torch.zeros(()), atol=1e-6)
+        weight = conv.weight
+        assert isinstance(weight, torch.Tensor)
+        assert torch.allclose(weight.mean(dim=-1), torch.zeros(()), atol=1e-6)
 
 
 @requires_torch()

@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import numpy as np
 import torch
 from torch import nn
@@ -24,7 +26,7 @@ class GRFNet(nn.Module):
         n_classes: int | None = None,
         *,
         n_outputs: int | None = None,
-        head="linear",
+        head: str | nn.Module | Callable[[int], nn.Module] | None = "linear",
         sfreq: float | None = None,
         spatial_components: int = 16,
         spatial_init: str | None = None,
@@ -146,6 +148,7 @@ class GRFNet(nn.Module):
         self.stream_gate = nn.Parameter(torch.zeros(len(statistics)))
         self.drop = nn.Dropout(dropout)
         if isinstance(head, str):
+            assert n_outputs is not None  # validated above
             self.classify = nn.Linear(self.embedding_dim, n_outputs)
         elif head is None or isinstance(head, nn.Module):
             self.classify = head

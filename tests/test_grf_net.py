@@ -79,10 +79,13 @@ def test_fixed_bank_is_frozen():
 
 @requires_torch()
 def test_statistics_control_head_width():
+    from torch import nn
+
     from grfnet import GRFNet
 
     full = GRFNet(n_channels=22, n_times=1000, n_classes=4, sfreq=250.0)
     ppv_only = GRFNet(n_channels=22, n_times=1000, n_classes=4, sfreq=250.0, statistics=("ppv",))
+    assert isinstance(full.classify, nn.Linear) and isinstance(ppv_only.classify, nn.Linear)
     assert full.classify.weight.shape[1] == 3 * full.n_features
     assert ppv_only.classify.weight.shape[1] == full.n_features
 

@@ -102,7 +102,9 @@ def test_float16_autocast_on_cuda():
         pytest.skip("CUDA not available")
     model = _model(n_classes=4).cuda().train()
     x = torch.randn(4, 6, 128, device="cuda")
-    scaler = torch.amp.GradScaler("cuda")
+    from torch.amp.grad_scaler import GradScaler
+
+    scaler = GradScaler("cuda")
     with torch.autocast("cuda", dtype=torch.float16):
         out = model(x)
         loss = torch.nn.functional.cross_entropy(out, torch.randint(0, 4, (4,), device="cuda"))
@@ -216,14 +218,16 @@ def test_onnx_export_matches_eager(tmp_path, kwargs):
     session = onnxruntime.InferenceSession(str(path), providers=["CPUExecutionProvider"])
     for shape in [(2, 6, 200), (1, 6, 77), (5, 6, 512)]:
         x = torch.randn(shape)
-        out = session.run(None, {"input": x.numpy()})[0]
+        out = np.asarray(session.run(None, {"input": x.numpy()})[0])
         with torch.no_grad():
             np.testing.assert_allclose(out, model(x).numpy(), atol=1e-5)
 
 
 def test_onnx_export_explains_missing_dependencies(monkeypatch, tmp_path):
+    import torch
+
     from grfnet import export_onnx
 
     monkeypatch.setitem(sys.modules, "onnx", None)
     with pytest.raises(ImportError, match=r"grfnet\[onnx\]"):
-        export_onnx(object(), tmp_path / "model.onnx")
+        export_onnx(torch.nn.Identity(), tmp_path / "model.onnx")

@@ -69,6 +69,7 @@ def test_every_edf_label_is_in_the_standard_template():
 def test_parse_subjects():
     assert parse_subjects("1-3, 7,3") == [1, 2, 3, 7]
     assert parse_subjects([5, 2]) == [2, 5]
+    assert parse_subjects(7) == [7]
     assert parse_subjects(None) is None
     with pytest.raises(ValueError, match="1..109"):
         parse_subjects("0-2")

@@ -11,6 +11,10 @@ All notable changes to this project are documented here. The format follows
 - `grfnet.data`: EEGMMIDB loader with six motor tasks, an optional rest class, resampling, band-pass filtering, channel selection and per-subject caching.
 - `python -m grfnet.data report`: dataset figures (montage, class balance, amplitude, example trials, spectra, ERD/ERS, topomaps), `summary.json`, `recordings.csv` and `report.md`.
 - `viz` extra with Matplotlib. Run outputs go under the ignored `runs/` folder.
+- `python -m grfnet.train`: TOML-configured training with subject-disjoint folds, validation-based model selection, seeds, checkpoints, CSV and JSON logs, predictions and per-subject metrics.
+- `python -m grfnet.evaluate`: checkpoint testing and a paired Wilcoxon comparison of two runs, in the optional `eval` extra.
+- `grfnet.experiments`: config, split, metric and runner functions behind both commands.
+- `configs/eegmmidb_imagery_lr.toml`: baseline with `dilations = [1, 2, 3, 5]` at 160 Hz.
 
 ## [0.1.0] - 2026-11-07
 

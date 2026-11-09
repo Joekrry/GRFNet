@@ -1,0 +1,39 @@
+# Baseline: GRFNet on EEGMMIDB imagined left versus right fist, 5-fold cross-subject.
+# python -m grfnet.train configs/eegmmidb_imagery_lr.toml
+
+name = "grfnet_eegmmidb_imagery_lr"
+seed = 0
+
+[data]
+dataset = "eegmmidb"
+task = "imagery_lr"
+# All 109 subjects. Set root here or with GRFNET_EEGMMIDB.
+tmin = 0.0
+tmax = 4.0
+sfreq = 160.0
+cache_dir = "runs/cache"
+normalize = "global"
+
+[split]
+scheme = "kfold"
+n_folds = 5
+val_fraction = 0.1
+
+[model]
+name = "GRFNet"
+use_channel_names = false
+
+[model.kwargs]
+# Distinct dilations at 160 Hz. Default scaling from 250 Hz gives [1, 1, 3, 5].
+dilations = [1, 2, 3, 5]
+
+[training]
+epochs = 100
+batch_size = 64
+lr = 0.001
+weight_decay = 0.0001
+scheduler = "cosine"
+patience = 20
+device = "auto"
+amp = false
+deterministic = false

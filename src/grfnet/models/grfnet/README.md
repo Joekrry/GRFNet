@@ -258,8 +258,16 @@ model = GRFNet(n_channels=8, n_classes=2, channel_coords=channel_positions(names
 
 ## Training and evaluation
 
-GRFNet trains with any standard PyTorch loop. No results are reported here yet:
-the EEGMMIDB training and evaluation pipeline is added in a later release.
+GRFNet trains with any standard PyTorch loop. The repository's pipeline trains
+it on EEGMMIDB with subject-disjoint folds:
+
+```bash
+python -m grfnet.train configs/eegmmidb_imagery_lr.toml
+```
+
+The baseline config uses `dilations = [1, 2, 3, 5]` at 160 Hz. See the
+[experiments README](../../experiments/README.md) for the config format and the
+run outputs. No results are reported here yet.
 
 ## Limitations
 

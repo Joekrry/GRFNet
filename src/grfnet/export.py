@@ -21,12 +21,14 @@ def export_onnx(
         import onnxscript  # noqa: F401
     except ImportError:
         raise ImportError("export_onnx requires onnx and onnxscript; install them with: pip install grfnet[onnx]") from None
-    if n_times is None:
-        n_times = getattr(model, "n_times", None) or 256
+    n_channels = getattr(model, "n_channels", None)
+    if not isinstance(n_channels, int):
+        raise TypeError(f"{type(model).__name__} has no integer n_channels attribute")
+    length = n_times if n_times is not None else (getattr(model, "n_times", None) or 256)
     was_training = model.training
     model.eval()
     try:
-        example = torch.zeros(2, model.n_channels, n_times)
+        example = torch.zeros(2, n_channels, int(length))
         dynamic_shapes = None
         if dynamic:
             dynamic_shapes = {"x": {0: torch.export.Dim("batch", min=1), 2: torch.export.Dim("n_times", min=2)}}
@@ -41,6 +43,8 @@ def export_onnx(
             # PyTorch's progress messages contain emoji that crash non-UTF-8 consoles.
             verbose=False,
         )
+        if program is None:
+            raise RuntimeError("torch.onnx.export returned no program")
         program.save(str(path))
     finally:
         model.train(was_training)

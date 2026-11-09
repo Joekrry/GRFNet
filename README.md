@@ -43,6 +43,7 @@ features:
 | `eeg`  | MNE-Python                       | Looking up EEG electrode positions   |
 | `onnx` | onnx, onnxscript, ONNX Runtime   | `export_onnx`                        |
 | `viz`  | Matplotlib                       | Dataset reports and figures          |
+| `eval` | SciPy                            | Wilcoxon tests between runs          |
 | `dev`  | pytest, Ruff                     | Running the tests and linter         |
 
 ```bash
@@ -85,6 +86,26 @@ python -m grfnet.data report --cache-dir runs/cache
 ```
 
 Run outputs go under `runs/`, which Git ignores.
+
+## Training and evaluation
+
+`python -m grfnet.train` runs a TOML-configured experiment with
+subject-disjoint cross-validation. It writes the configuration, splits,
+environment, training logs, checkpoints, predictions and metrics to
+`runs/<name>/`.
+
+```bash
+python -m grfnet.train configs/eegmmidb_imagery_lr.toml
+```
+
+```bash
+python -m grfnet.evaluate --checkpoint runs/grfnet_eegmmidb_imagery_lr/fold_0/best.pt
+```
+
+`python -m grfnet.evaluate --compare RUN_A RUN_B` compares two runs subject by
+subject with a Wilcoxon signed-rank test. See the
+[experiments README](src/grfnet/experiments/README.md) for the protocol, every
+config key and the run folder layout.
 
 ## Saving and deployment
 
@@ -147,8 +168,12 @@ src/grfnet/
   export.py          ONNX export
   channels.py        EEG electrode positions (eeg extra)
   data/              dataset loaders and dataset reports, with a README
+  experiments/       configs, subject splits, metrics and the training runner, with a README
+  train.py           python -m grfnet.train
+  evaluate.py        python -m grfnet.evaluate
   models/
     grfnet/          GRFNet model and its README
+configs/             experiment configs
 tests/               unit tests and reference outputs
 ```
 
@@ -167,7 +192,7 @@ Tests that read the EEGMMIDB files run only when the dataset is present. To run
 every other test, install all extras:
 
 ```bash
-pip install -e ".[dev,eeg,onnx,viz]"
+pip install -e ".[dev,eeg,onnx,viz,eval]"
 ```
 
 To check the code with the linter:
