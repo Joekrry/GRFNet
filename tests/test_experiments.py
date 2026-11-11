@@ -8,20 +8,19 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from grfnet.data import eegmmidb
 from grfnet.experiments import metrics
 from grfnet.experiments.config import ExperimentConfig, apply_override, load_config, to_toml
 from grfnet.experiments.splits import check_folds, load_splits, save_splits, subject_kfold
 
+from conftest import fake_eegmmidb as _fake_dataset
 from conftest import requires_torch
+from conftest import tiny_config as _config
 
 ROOT = Path(__file__).resolve().parents[1]
-BASELINE = ROOT / "configs" / "eegmmidb_imagery_lr.toml"
-NAMES = ["FC1", "C3", "Cz", "C4"]
+BASELINE = ROOT / "configs" / "grfnet_eegmmidb_imagery_lr.toml"
 requires_scipy = pytest.mark.skipif(importlib.util.find_spec("scipy") is None, reason="scipy not installed")
 
 
-# ---- config ----------------------------------------------------------------
 
 def test_baseline_config_loads_with_distinct_dilations():
     config = load_config(BASELINE)
@@ -81,7 +80,6 @@ def test_toml_round_trip(tmp_path):
     assert load_config(path) == config
 
 
-# ---- splits ----------------------------------------------------------------
 
 def test_subject_kfold_is_disjoint_and_covers_every_subject():
     subjects = list(range(1, 24))
@@ -114,7 +112,6 @@ def test_splits_file_round_trip(tmp_path):
     assert load_splits(tmp_path / "splits.json") == folds
 
 
-# ---- metrics ---------------------------------------------------------------
 
 def test_metrics_on_known_values():
     y_true = [0, 0, 0, 0, 1, 1]
@@ -155,44 +152,6 @@ def test_paired_wilcoxon_explains_missing_scipy(monkeypatch):
     with pytest.raises(ImportError, match=r"grfnet\[eval\]"):
         metrics.paired_wilcoxon([0.1, 0.2], [0.2, 0.1])
 
-
-# ---- runner ----------------------------------------------------------------
-
-def _fake_dataset(monkeypatch, tmp_path, n_subjects=6):
-    """Fake EDF runs: cues every 4 s; class 1 carries a 10 Hz rhythm at C3."""
-    for subject in range(1, n_subjects + 1):
-        for run in (4, 8, 12):
-            path = eegmmidb.run_path(tmp_path / "data", subject, run)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.touch()
-
-    def read(path, sfreq, l_freq, h_freq):
-        subject, run = int(path.name[1:4]), int(path.name[5:7])
-        rng = np.random.default_rng(subject * 100 + run)
-        n = int(40 * sfreq)
-        signal = rng.standard_normal((len(NAMES), n)).astype(np.float32) * 10
-        onsets = np.arange(0.0, 36.0, 4.0)
-        codes = np.array(["T1", "T2"] * 5)[: len(onsets)]
-        t = np.arange(int(2 * sfreq)) / sfreq
-        for onset, code in zip(onsets, codes, strict=True):
-            if code == "T2":
-                start = int(onset * sfreq)
-                signal[1, start:start + len(t)] += 20 * np.sin(2 * np.pi * 10 * t).astype(np.float32)
-        return signal, list(NAMES), onsets, codes
-
-    monkeypatch.setattr(eegmmidb, "_read_run", read)
-    return tmp_path / "data"
-
-
-def _config(root, **training):
-    config = ExperimentConfig.from_dict({
-        "name": "test",
-        "data": {"root": str(root), "tmax": 2.0, "cache_dir": None},
-        "split": {"n_folds": 3, "val_fraction": 0.25},
-        "model": {"kwargs": {"dilations": [1, 2, 3, 5], "spatial_components": 4}},
-        "training": {"epochs": 2, "batch_size": 16, "device": "cpu", "patience": None, **training},
-    })
-    return config.validate()
 
 
 @requires_torch()
@@ -289,3 +248,77 @@ def test_unknown_dataset_and_model_are_rejected():
         load_dataset(config.data)
     with pytest.raises(ValueError, match="unknown model"):
         build_model(config.model, data)
+
+
+
+requires_tqdm = pytest.mark.skipif(importlib.util.find_spec("tqdm") is None, reason="tqdm not installed")
+
+
+def test_progress_switch(monkeypatch):
+    from grfnet import _progress
+
+    assert _progress.use_bars(False) is False
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: False, raising=False)
+    assert _progress.use_bars(None) is False
+    stand_in = _progress.bar([1, 2], enabled=False)
+    stand_in.set_postfix(loss=1.0)
+    stand_in.update()
+    assert list(stand_in) == [1, 2]
+    assert _progress.writer(print, False) is print
+
+
+def test_progress_falls_back_without_tqdm(monkeypatch):
+    from grfnet import _progress
+
+    monkeypatch.setattr(_progress.importlib.util, "find_spec", lambda name: None)
+    assert _progress.use_bars(True) is False
+
+
+@requires_torch()
+@requires_tqdm
+def test_progress_bars_do_not_change_results(monkeypatch, tmp_path, capsys):
+    from grfnet.experiments.runner import run_experiment
+
+    root = _fake_dataset(monkeypatch, tmp_path)
+    plain = run_experiment(_config(root), tmp_path / "plain", folds=[0], progress=False, log=lambda *_: None)
+    capsys.readouterr()
+    shown = run_experiment(_config(root), tmp_path / "bars", folds=[0], progress=True, log=lambda *_: None)
+    err = capsys.readouterr().err
+    assert "fold 0 (0/1 done)" in err and "epoch" in err
+    assert "folds:" not in err
+    assert shown["folds"][0]["test"] == plain["folds"][0]["test"]
+
+
+def test_run_names_follow_the_convention():
+    from grfnet.experiments.config import run_name
+
+    assert run_name("GRFNet", "eegmmidb", "imagery_lr") == "grfnet_eegmmidb_imagery_lr"
+    assert run_name("GRFNet", "eegmmidb", "imagery", include_rest=True, variant="s1") == "grfnet_eegmmidb_imagery_rest_s1"
+    config = load_config(BASELINE)
+    assert config.name is None and config.run_name == "grfnet_eegmmidb_imagery_lr"
+    assert BASELINE.stem == config.run_name
+    assert load_config(BASELINE, ["variant=geometry"]).run_name == "grfnet_eegmmidb_imagery_lr_geometry"
+    assert load_config(BASELINE, ["name=custom_run"]).run_name == "custom_run"
+
+
+@pytest.mark.parametrize("override", ["name=My Run", "variant=Geometry", "name=a/b", "variant=_x"])
+def test_bad_run_names_are_rejected(override):
+    with pytest.raises(ValueError, match="lowercase"):
+        load_config(BASELINE, [override])
+
+
+@requires_torch()
+def test_train_writes_to_the_standard_run_folder(monkeypatch, tmp_path):
+    from grfnet import train
+
+    root = _fake_dataset(monkeypatch, tmp_path)
+    config = _config(root)
+    config.name = None
+    config.variant = "smoke"
+    path = tmp_path / "config.toml"
+    path.write_text(to_toml(config), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert train.main([str(path), "--folds", "0", "--no-progress"]) == 0
+    run = tmp_path / "runs" / "grfnet_eegmmidb_imagery_lr_smoke"
+    assert (run / "results.json").exists()
+    assert json.loads((run / "results.json").read_text(encoding="utf-8"))["experiment"] == run.name

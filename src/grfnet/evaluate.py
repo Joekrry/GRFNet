@@ -1,4 +1,4 @@
-"""Command line: python -m grfnet.evaluate --checkpoint PATH | --compare RUN_A RUN_B."""
+"""Evaluate a checkpoint or compare two runs: python -m grfnet.evaluate."""
 
 from __future__ import annotations
 

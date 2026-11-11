@@ -7,7 +7,7 @@ from numpy.typing import ArrayLike
 
 
 def confusion_matrix(y_true, y_pred, n_classes: int) -> np.ndarray:
-    """Counts with true classes as rows and predicted classes as columns."""
+    """Rows are true classes, columns predicted classes."""
     matrix = np.zeros((n_classes, n_classes), dtype=np.int64)
     np.add.at(matrix, (np.asarray(y_true, dtype=np.int64), np.asarray(y_pred, dtype=np.int64)), 1)
     return matrix
@@ -68,7 +68,7 @@ def per_subject_scores(subjects, y_true, y_pred, n_classes: int) -> dict[int, di
 
 
 def paired_wilcoxon(a: ArrayLike, b: ArrayLike) -> dict:
-    """Two-sided Wilcoxon signed-rank test on paired scores, such as per-subject accuracies. Requires the eval extra."""
+    """Two-sided Wilcoxon signed-rank test on paired scores, e.g. per-subject accuracies."""
     try:
         from scipy.stats import wilcoxon
     except ImportError:
@@ -82,6 +82,6 @@ def paired_wilcoxon(a: ArrayLike, b: ArrayLike) -> dict:
               "n_wins_b": int(np.sum(diff < 0)), "n_ties": int(np.sum(diff == 0))}
     if np.all(diff == 0):
         return {**result, "statistic": float("nan"), "p_value": 1.0}
-    # SciPy's result type is untyped in its stubs; it unpacks as (statistic, p-value).
+    # Unpacked rather than .pvalue: SciPy's stubs leave the result untyped.
     statistic, p_value = wilcoxon(x, y, zero_method="wilcox", alternative="two-sided")
     return {**result, "statistic": float(np.asarray(statistic)), "p_value": float(np.asarray(p_value))}

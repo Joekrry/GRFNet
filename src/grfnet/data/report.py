@@ -1,4 +1,4 @@
-"""Dataset report: figures and summary tables for epoched EEG. Requires the viz and eeg extras."""
+"""Dataset report: summary tables and figures for epoched EEG."""
 
 from __future__ import annotations
 
@@ -9,11 +9,16 @@ from pathlib import Path
 
 import numpy as np
 
+from .._plotting import GRID, MUTED, SERIES, TEXT, eeg_info
+from .._plotting import class_label as _class_label
+from .._plotting import figure as _figure
+from .._plotting import label as _label
+from .._plotting import legend as _legend
+from .._plotting import outside_legend as _outside_legend
+from .._plotting import save as _save
+from .._plotting import title as _title
 from .eegmmidb import RESAMPLED_SUBJECTS, EpochsData
 
-# Categorical slots, text and grid colours.
-SERIES = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948")
-TEXT, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 BANDS = {"mu (8-13 Hz)": (8.0, 13.0), "beta (13-30 Hz)": (13.0, 30.0)}
 FOCUS_CHANNELS = ("C3", "Cz", "C4")
 _CHUNK = 256
@@ -116,60 +121,12 @@ def _markdown(summary: dict, figures: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-def _figure(nrows=1, ncols=1, width=8.0, height=4.0, **kwargs):
-    from matplotlib.figure import Figure
-
-    fig = Figure(figsize=(width, height), layout="constrained")
-    axes = fig.subplots(nrows, ncols, squeeze=False, **kwargs)
-    for ax in axes.flat:
-        ax.tick_params(colors=MUTED, labelsize=8)
-        for side in ("top", "right"):
-            ax.spines[side].set_visible(False)
-        for side in ("left", "bottom"):
-            ax.spines[side].set_color(GRID)
-        ax.grid(True, color=GRID, linewidth=0.6)
-        ax.set_axisbelow(True)
-    return fig, axes
-
-
-def _save(fig, path: Path, dpi: int) -> None:
-    fig.savefig(path, dpi=dpi, facecolor="white")
-
-
-def _title(ax, text: str) -> None:
-    ax.set_title(text, color=TEXT, fontsize=10, loc="left")
-
-
-def _label(ax, x: str | None = None, y: str | None = None) -> None:
-    if x:
-        ax.set_xlabel(x, color=MUTED, fontsize=9)
-    if y:
-        ax.set_ylabel(y, color=MUTED, fontsize=9)
-
-
-def _legend(ax, **kwargs) -> None:
-    ax.legend(frameon=False, fontsize=8, labelcolor=TEXT, **kwargs)
-
-
-def _outside_legend(fig, ax) -> None:
-    fig.legend(*ax.get_legend_handles_labels(), loc="outside right upper", frameon=False, fontsize=8,
-               labelcolor=TEXT)
-
-
-def _class_label(name: str) -> str:
-    return name.replace("_", " ")
-
-
 def _channel(epochs: EpochsData, name: str) -> int:
     return [n.lower() for n in epochs.ch_names].index(name.lower())
 
 
 def _info(epochs: EpochsData):
-    import mne
-
-    info = mne.create_info(list(epochs.ch_names), epochs.sfreq, "eeg")
-    info.set_montage("standard_1020", match_case=False)
-    return info
+    return eeg_info(epochs.ch_names, epochs.sfreq)
 
 
 def _montage(epochs: EpochsData):

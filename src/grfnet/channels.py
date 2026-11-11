@@ -1,4 +1,4 @@
-"""EEG electrode coordinate lookup for geometry-seeded spatial filters."""
+"""EEG electrode positions."""
 
 from __future__ import annotations
 
@@ -10,8 +10,10 @@ import numpy as np
 def channel_positions(
     names: Sequence[str], *, montage: str = "standard_1020", ndim: int = 2
 ) -> np.ndarray:
-    """Normalised (n, ndim) electrode coordinates for names, from an MNE template (x = right, y = anterior, z = up; centroid-centred, unit max radius).
-    ndim=2 drops z. Raises if a name is absent. Requires the eeg extra."""
+    """Electrode positions from an MNE template, centred and scaled to a unit maximum radius.
+
+    Axes are right, anterior and up; ``ndim=2`` drops the vertical axis.
+    """
     if ndim not in (2, 3):
         raise ValueError(f"ndim must be 2 or 3; got {ndim}")
     try:
@@ -30,7 +32,6 @@ def channel_positions(
         [template[by_lower[name.lower()]][:ndim] for name in names], dtype=np.float64
     )
 
-    # centre on the montage centroid, then scale so the outermost electrode = 1
     coords -= coords.mean(axis=0, keepdims=True)
     radius = float(np.linalg.norm(coords, axis=1).max())
     if radius > 0.0:

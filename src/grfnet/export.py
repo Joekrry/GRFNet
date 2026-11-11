@@ -14,8 +14,10 @@ def export_onnx(
     opset: int = 18,
     dynamic: bool = True,
 ) -> None:
-    """Export model in eval mode to an ONNX file. Input "input" is (batch, n_channels, n_times) and output is "output".
-    dynamic=True lets batch size and input length vary. Requires the onnx extra."""
+    """Export to ONNX with input "input" (batch, n_channels, n_times) and output "output".
+
+    With ``dynamic=True`` the batch size and input length may vary.
+    """
     try:
         import onnx  # noqa: F401
         import onnxscript  # noqa: F401
@@ -40,7 +42,7 @@ def export_onnx(
             opset_version=opset,
             dynamic_shapes=dynamic_shapes,
             dynamo=True,
-            # PyTorch's progress messages contain emoji that crash non-UTF-8 consoles.
+            # The exporter's progress output contains emoji that crash cp1252 consoles.
             verbose=False,
         )
         if program is None:

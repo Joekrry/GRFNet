@@ -1,140 +1,138 @@
 # Experiments
 
-`grfnet.experiments` trains and tests models with subject-disjoint
-cross-validation. Every run is defined by one TOML file and writes its
-configuration, splits, environment, logs, checkpoints, predictions and metrics
-to a run folder.
+Training, evaluation and reports for subject-disjoint cross-validation. Each run
+is defined by one TOML config and writes everything it produces to
+`runs/<run name>/`.
 
-## Training
-
-```bash
-pip install -e ".[eeg,eval]"
-```
+## Usage
 
 ```bash
-python -m grfnet.train configs/eegmmidb_imagery_lr.toml
-```
-
-| Option             | Meaning                                                               |
-| ------------------ | --------------------------------------------------------------------- |
-| `--out DIR`        | Run folder. Default: `runs/<name>`.                                   |
-| `--set KEY=VALUE`  | Override a config value. Parsed as TOML, else kept as text. Repeatable. |
-| `--folds 0,2`      | Run only these folds. Default: all.                                   |
-| `--overwrite`      | Replace a run folder that is not empty.                               |
-
-A quick check on ten subjects, two folds and three epochs:
-
-```bash
-python -m grfnet.train configs/eegmmidb_imagery_lr.toml --set data.subjects=1-10 --set split.n_folds=2 --set training.epochs=3 --out runs/smoke
-```
-
-## Evaluation
-
-```bash
+python -m grfnet.train configs/grfnet_eegmmidb_imagery_lr.toml                # train and test all folds
+python -m grfnet.train configs/grfnet_eegmmidb_imagery_lr.toml --set training.epochs=3 --folds 0 --set variant=smoke
 python -m grfnet.evaluate --checkpoint runs/grfnet_eegmmidb_imagery_lr/fold_0/best.pt
+python -m grfnet.evaluate --compare runs/grfnet_eegmmidb_imagery_lr runs/grfnet_eegmmidb_imagery_lr_geometry
+python -m grfnet.report runs/grfnet_eegmmidb_imagery_lr                       # figures, tables, benchmark
 ```
 
-This reloads the checkpoint, reads the data with the options it was trained
-with, and tests it on that fold's test subjects. `--subjects` tests other
-subjects, `--root` points to a moved dataset, and `--out` writes
-`metrics.json` and `predictions.csv`.
+| Command    | Options                                                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `train`    | `--out DIR`, `--set KEY=VALUE` (TOML value, else text; repeatable), `--folds 0,2`, `--overwrite`, `--no-progress`                          |
+| `evaluate` | `--checkpoint PATH` or `--compare RUN_A RUN_B`; `--subjects`, `--root`, `--out`, `--metric`, `--device`                                   |
+| `report`   | `--out DIR`, `--fold K`, `--root`, `--no-data`, `--no-benchmark`, `--max-trials N`, `--dpi`, `--device`, `--no-progress`                   |
 
-To compare two runs over the subjects they share, with a two-sided Wilcoxon
-signed-rank test on per-subject balanced accuracy (needs the `eval` extra):
+Training shows a tqdm progress bar per fold in a terminal, and one line per
+epoch otherwise. `evaluate --checkpoint` reloads the data with the options the
+model was trained with and tests the fold's own test subjects by default.
 
-```bash
-python -m grfnet.evaluate --compare runs/run_a runs/run_b
-```
+## Run names
+
+Runs are named `{model}_{dataset}_{task}` in lowercase, with `_rest` when the
+rest class is included and `_{variant}` for a variant of a config:
+
+| Output         | Location                                          | Example                                        |
+| -------------- | ------------------------------------------------- | ---------------------------------------------- |
+| Config         | `configs/{model}_{dataset}_{task}.toml`           | `configs/grfnet_eegmmidb_imagery_lr.toml`      |
+| Training run   | `runs/{model}_{dataset}_{task}[_{variant}]/`      | `runs/grfnet_eegmmidb_imagery_lr_geometry/`    |
+| Run report     | `runs/{run}/report/`                              | `runs/grfnet_eegmmidb_imagery_lr/report/`      |
+| Dataset report | `runs/dataset_{dataset}_{task}/`                  | `runs/dataset_eegmmidb_imagery_lr/`            |
+| Epoch cache    | `runs/cache/`                                     |                                                |
+
+Set `variant` in the config or with `--set variant=geometry`. `name` overrides
+the whole run name and `--out` the folder; both should be the exception.
 
 ## Protocol
 
-- **Splits.** Subjects are shuffled with `seed` and dealt into `n_folds`
-  groups. Each group is the test set of one fold. A `val_fraction` share of the
-  remaining subjects is held out for validation. No subject appears in two of
-  a fold's train, validation and test sets. The folds are written to
-  `splits.json`, and `split.scheme = "file"` reuses a saved file.
-- **Normalisation.** `normalize = "global"` divides every trial by one number,
-  the standard deviation of the fold's training trials. Relative power between
-  channels and between trials is kept. The value is stored in the checkpoint.
-- **Training.** AdamW with cross-entropy, cosine learning-rate decay, and
-  optional mixed precision on CUDA. Frozen kernels are excluded from the
-  optimiser.
-- **Model selection.** The checkpoint is the epoch with the highest validation
-  balanced accuracy, with ties broken by lower validation loss. Without
-  validation subjects it is the last epoch. `patience` stops training after that
-  many epochs without improvement.
-- **Seeds.** Each fold seeds Python, NumPy and PyTorch with `seed + fold`.
-  `deterministic = true` also requests deterministic PyTorch kernels.
+- **Splits.** Subjects are shuffled with `seed` and dealt into `n_folds` test
+  groups. `val_fraction` of the remaining subjects is held out for validation.
+  No subject is in two sets of a fold. Folds are saved to `splits.json`.
+- **Normalisation.** Trials are divided by the standard deviation of the fold's
+  training trials, keeping relative power between channels.
+- **Training.** AdamW, cross-entropy and cosine decay. Frozen kernels are not
+  optimised.
+- **Selection.** The epoch with the highest validation balanced accuracy,
+  ties broken by validation loss, is tested. `patience` stops training early.
+- **Seeds.** Python, NumPy and PyTorch are seeded with `seed + fold`.
 - **Metrics.** Accuracy, balanced accuracy, Cohen's kappa, macro F1 and the
-  confusion matrix, for each fold, pooled over all folds and for each subject.
+  confusion matrix, per fold, pooled and per subject.
 
 ## Configuration
 
-Keys left out take the defaults below. TOML has no null value: leaving out an
-optional key turns that feature off.
+Omitted keys take these defaults. TOML has no null: leaving out an optional key
+turns it off.
 
 ```toml
-name = "experiment"        # default run folder name
+# name = "..."              # default: {model}_{dataset}_{task}[_rest][_{variant}]
+# variant = "geometry"
 seed = 0
 
 [data]
 dataset = "eegmmidb"
-# root = "path/to/files"   # else $GRFNET_EEGMMIDB or src/dataset/files
 task = "imagery_lr"
-# subjects = "1-109"       # default: every subject found
 tmin = 0.0
 tmax = 4.0
 sfreq = 160.0
-# l_freq = 4.0             # band-pass edges in Hz
-# h_freq = 40.0
 include_rest = false
-# channels = ["C3", "Cz", "C4"]
-# cache_dir = "runs/cache"
-normalize = "global"       # or "none"
+normalize = "global"        # or "none"
+# root, subjects, l_freq, h_freq, channels, cache_dir: see the datasets README
 
 [split]
-scheme = "kfold"           # or "file"
+scheme = "kfold"            # or "file", with file = "path/to/splits.json"
 n_folds = 5
 val_fraction = 0.1
-# folds = [0]              # run a subset of folds
-# file = "runs/other/splits.json"
+# folds = [0]
 
 [model]
 name = "GRFNet"
-use_channel_names = false  # true passes the data's channel names (geometry seeding)
+use_channel_names = false   # true seeds spatial filters from the data's channel names
 
-[model.kwargs]             # any GRFNet constructor argument
-# dilations = [1, 2, 3, 5]
+[model.kwargs]              # any GRFNet argument, e.g. dilations = [1, 2, 3, 5]
 
 [training]
 epochs = 100
 batch_size = 64
 lr = 0.001
 weight_decay = 0.0001
-scheduler = "cosine"       # or "none"
+scheduler = "cosine"        # or "none"
 # patience = 20
-device = "auto"            # "cuda", "cpu" or "auto"
+device = "auto"
 amp = false
 deterministic = false
 ```
 
-`n_times`, `n_classes` and `n_channels` come from the data. `sfreq` is passed
-to the model unless `model.kwargs` sets `dilations`.
+`n_channels`, `n_times` and `n_classes` come from the data; `sfreq` is passed to
+the model unless `dilations` is set.
 
-## Run folder
+## Outputs
 
 ```text
-runs/<name>/
-  config.toml        resolved configuration
-  environment.json   package versions, device, Git commit, start time
-  splits.json        subjects of every fold
-  results.json       pooled, per-fold and per-subject metrics
-  per_subject.csv    per-subject accuracy and balanced accuracy
+runs/<run name>/
+  config.toml, environment.json, splits.json
+  results.json, per_subject.csv        pooled, per-fold and per-subject metrics
   fold_<k>/
-    history.csv      loss, accuracy, learning rate and time per epoch
-    best.pt          selected checkpoint, with the data options and fold subjects
-    metrics.json     test metrics
-    predictions.csv  subject, run, true class, predicted class and probabilities
+    history.csv                        per-epoch loss, accuracy, learning rate, time
+    best.pt                            selected checkpoint with data options and subjects
+    metrics.json, predictions.csv
+  report/                              python -m grfnet.report
 ```
 
-Run folders live under `runs/`, which Git ignores.
+| Report file            | Content                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------- |
+| `report.md`, `.json`   | Results, per-fold table, efficiency and all figures.                                          |
+| `efficiency.json`      | Parameters, FLOPs per trial, checkpoint size, CPU and CUDA latency and throughput, training time, machine. |
+| `learning_curves.png`  | Loss and accuracy per fold; dots mark the selected epoch.                                     |
+| `confusion_matrix.png` | Pooled test confusion matrix.                                                                 |
+| `subject_scores.png`   | Balanced accuracy per subject and per fold, against chance.                                   |
+| `stream_gates.png`     | Gate weight of each pooling statistic per fold.                                               |
+| `spatial_filters.png`  | Spatial filter weights.                                                                       |
+| `kernel_responses.png` | Frequency responses of frozen and learnable kernels per dilation.                             |
+| `spatial_patterns.png` | Activation patterns `A = C W^T (W C W^T)^-1` from the test data [1]. *                        |
+| `embeddings.png`       | t-SNE of the embedding (PCA without scikit-learn), by class and by correctness. *             |
+| `saliency.png`         | Mean \|gradient x input\| per channel and over time. *                                        |
+
+Model figures use the lowest fold's checkpoint unless `--fold` is given. Figures
+marked * read that fold's test data and are skipped, with a note, if the dataset
+is missing. Timings depend on the machine.
+
+## References
+
+1. Haufe, S. et al. (2014). On the interpretation of weight vectors of linear models in multivariate neuroimaging. *NeuroImage*, 87, 96-110.

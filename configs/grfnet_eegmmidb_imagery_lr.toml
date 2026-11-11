@@ -1,7 +1,7 @@
 # Baseline: GRFNet on EEGMMIDB imagined left versus right fist, 5-fold cross-subject.
-# python -m grfnet.train configs/eegmmidb_imagery_lr.toml
+# python -m grfnet.train configs/grfnet_eegmmidb_imagery_lr.toml
+# Runs are named {model}_{dataset}_{task}: this one writes to runs/grfnet_eegmmidb_imagery_lr.
 
-name = "grfnet_eegmmidb_imagery_lr"
 seed = 0
 
 [data]

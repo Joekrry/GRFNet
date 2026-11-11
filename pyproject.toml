@@ -23,9 +23,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-eeg = ["mne>=1.6"]
+eeg = ["mne>=1.6", "tqdm>=4.66"]
 onnx = ["onnx>=1.23", "onnxscript>=0.7", "onnxruntime>=1.31"]
-viz = ["matplotlib>=3.8"]
+viz = ["matplotlib>=3.8", "scikit-learn>=1.4"]
 eval = ["scipy>=1.11"]
 dev = ["pytest>=8.0", "ruff>=0.17"]
 

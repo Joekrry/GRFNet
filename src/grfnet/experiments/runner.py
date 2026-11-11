@@ -19,6 +19,7 @@ import torch
 from torch import nn
 from torch.amp.grad_scaler import GradScaler
 
+from .._progress import bar, use_bars, writer
 from ..data.eegmmidb import EpochsData, load_epochs
 from ..models import GRFNet
 from .config import DataConfig, ExperimentConfig, ModelConfig, to_toml
@@ -41,8 +42,7 @@ def resolve_device(name: str) -> torch.device:
     return torch.device(name)
 
 
-def load_dataset(config: DataConfig, subjects=None, *, progress: bool = False) -> EpochsData:
-    """Epochs for the configured dataset. subjects overrides config.subjects."""
+def load_dataset(config: DataConfig, subjects=None, *, progress: bool | None = False) -> EpochsData:
     if config.dataset != "eegmmidb":
         raise ValueError(f"unknown dataset {config.dataset!r}; available: ['eegmmidb']")
     return load_epochs(config.root, config.task, config.subjects if subjects is None else subjects,
@@ -68,7 +68,6 @@ def build_model(config: ModelConfig, data: EpochsData) -> GRFNet:
 @torch.no_grad()
 def predict_proba(model: nn.Module, X: np.ndarray, *, scale: float = 1.0, batch_size: int = 256,
                   device: torch.device | str = "cpu") -> np.ndarray:
-    """Class probabilities for X divided by scale."""
     model.eval().to(device)
     out = []
     for i in range(0, len(X), batch_size):
@@ -78,8 +77,10 @@ def predict_proba(model: nn.Module, X: np.ndarray, *, scale: float = 1.0, batch_
 
 
 def run_experiment(config: ExperimentConfig, out_dir: str | Path, *, folds: list[int] | None = None,
-                   overwrite: bool = False, log=print) -> dict:
-    """Train and test every selected fold. Writes config, splits, logs, checkpoints and results to out_dir."""
+                   overwrite: bool = False, log=print, progress: bool | None = None) -> dict:
+    """Train and test the selected folds, writing everything to ``out_dir``. Returns the pooled results."""
+    bars = use_bars(progress)
+    log = writer(log, bars)
     out = Path(out_dir)
     if out.exists() and any(out.iterdir()):
         if not overwrite:
@@ -90,7 +91,7 @@ def run_experiment(config: ExperimentConfig, out_dir: str | Path, *, folds: list
     device = resolve_device(config.training.device)
     (out / "environment.json").write_text(dumps_json(environment(device)), encoding="utf-8")
 
-    data = load_dataset(config.data, progress=True)
+    data = load_dataset(config.data, progress=progress)
     subjects = sorted(int(s) for s in np.unique(data.subjects))
     if config.split.scheme == "file":
         if config.split.file is None:
@@ -108,12 +109,16 @@ def run_experiment(config: ExperimentConfig, out_dir: str | Path, *, folds: list
         raise ValueError(f"no folds match {chosen}")
 
     results, predictions = [], []
-    for fold in selected:
+    for done, fold in enumerate(selected):
         log(f"fold {fold['fold']}: {len(fold['train'])} train, {len(fold['val'])} val, "
             f"{len(fold['test'])} test subjects")
-        fold_result, fold_predictions = train_fold(config, data, fold, out / f"fold_{fold['fold']}", device, log)
+        fold_result, fold_predictions = train_fold(config, data, fold, out / f"fold_{fold['fold']}", device, log,
+                                                   bars=bars, label=f"fold {fold['fold']} ({done}/{len(selected)} done)")
         results.append(fold_result)
         predictions.append(fold_predictions)
+        log(f"fold {fold['fold']}: best epoch {fold_result['best_epoch']} of {fold_result['epochs_run']}, "
+            f"test balanced accuracy {fold_result['test']['balanced_accuracy']:.4f} "
+            f"({done + 1}/{len(selected)} folds completed)")
 
     summary = summarise(config, data, results, predictions)
     (out / "results.json").write_text(dumps_json(summary), encoding="utf-8")
@@ -124,7 +129,7 @@ def run_experiment(config: ExperimentConfig, out_dir: str | Path, *, folds: list
 
 
 def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path, device: torch.device,
-               log=print) -> tuple[dict, dict]:
+               log=print, *, bars: bool = False, label: str | None = None) -> tuple[dict, dict]:
     out.mkdir(parents=True, exist_ok=True)
     train_cfg = config.training
     seed_everything(config.seed + fold["fold"], train_cfg.deterministic)
@@ -149,6 +154,8 @@ def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path
     history: list[dict] = []
     best_key: tuple | None = None
     best_epoch, best_state, stale = 0, _state_copy(model), 0
+    epoch_bar = bar(total=train_cfg.epochs, enabled=bars, desc=label or f"fold {fold['fold']}", unit="epoch",
+                    leave=False)
     for epoch in range(1, train_cfg.epochs + 1):
         start = time.perf_counter()
         model.train()
@@ -176,22 +183,26 @@ def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path
                 parts["val"].y, probs.argmax(1), n_classes)["balanced_accuracy"]
         row["seconds"] = time.perf_counter() - start
         history.append(row)
-        log(_format_row(fold["fold"], row))
+        if not bars:
+            log(_format_row(fold["fold"], row))
 
-        # Best epoch: highest validation balanced accuracy, then lowest validation loss. Last epoch without val.
+        # Highest validation balanced accuracy, ties broken by loss; the last epoch if there is no validation set.
         key = (row["val_balanced_accuracy"], -row["val_loss"]) if "val_loss" in row else (epoch,)
         if best_key is None or key > best_key:
             best_key, best_epoch, best_state, stale = key, epoch, _state_copy(model), 0
         else:
             stale += 1
-            if train_cfg.patience is not None and "val_loss" in row and stale >= train_cfg.patience:
-                log(f"fold {fold['fold']}: stopping early at epoch {epoch}")
-                break
+        epoch_bar.set_postfix(_postfix(row, best_epoch), refresh=False)
+        epoch_bar.update()
+        if train_cfg.patience is not None and "val_loss" in row and stale >= train_cfg.patience:
+            log(f"fold {fold['fold']}: stopping early at epoch {epoch}")
+            break
+    epoch_bar.close()
 
     _write_csv(out / "history.csv", history)
     model.load_state_dict(best_state)
     metadata = {
-        "experiment": config.name,
+        "experiment": config.run_name,
         "fold": fold["fold"],
         "epoch": best_epoch,
         "scale": scale,
@@ -229,7 +240,7 @@ def summarise(config: ExperimentConfig, data: EpochsData, results: list[dict], p
     per_subject = per_subject_scores(subjects, y, pred, data.n_classes)
     subject_scores = np.array([s["balanced_accuracy"] for s in per_subject.values()])
     return {
-        "experiment": config.name,
+        "experiment": config.run_name,
         "dataset": config.data.dataset,
         "task": config.data.task,
         "class_names": list(data.class_names),
@@ -246,7 +257,7 @@ def summarise(config: ExperimentConfig, data: EpochsData, results: list[dict], p
 
 def evaluate_checkpoint(path: str | Path, *, subjects=None, root: str | None = None,
                         out_dir: str | Path | None = None, device: str = "auto") -> dict:
-    """Test a checkpoint written by run_experiment. Defaults to its own test subjects."""
+    """Re-test a checkpoint from ``run_experiment``, by default on its own test subjects."""
     from ..checkpoint import load_checkpoint
 
     meta = load_checkpoint(path)["metadata"]
@@ -279,7 +290,7 @@ def evaluate_checkpoint(path: str | Path, *, subjects=None, root: str | None = N
 
 
 def compare_runs(run_a: str | Path, run_b: str | Path, metric: str = "balanced_accuracy") -> dict:
-    """Paired Wilcoxon test on the per-subject scores of two runs over their shared subjects."""
+    """Wilcoxon test on the per-subject scores of two runs, over the subjects they share."""
     from .metrics import paired_wilcoxon
 
     scores = []
@@ -323,7 +334,7 @@ def environment(device: torch.device) -> dict:
 
 
 def dumps_json(value) -> str:
-    """Indented JSON with NaN and infinity written as null."""
+    # NaN is not valid JSON.
     return json.dumps(_finite(value), indent=2)
 
 
@@ -343,6 +354,14 @@ def _state_copy(model: nn.Module) -> dict[str, torch.Tensor]:
 
 def _nll(probs: np.ndarray, y: np.ndarray) -> float:
     return float(-np.mean(np.log(np.clip(probs[np.arange(len(y)), y], 1e-12, None))))
+
+
+def _postfix(row: dict, best_epoch: int) -> dict[str, str]:
+    postfix = {"loss": f"{row['train_loss']:.3f}", "acc": f"{row['train_accuracy']:.3f}"}
+    if "val_loss" in row:
+        postfix["val_bacc"] = f"{row['val_balanced_accuracy']:.3f}"
+    postfix["best"] = str(best_epoch)
+    return postfix
 
 
 def _format_row(fold: int, row: dict) -> str:

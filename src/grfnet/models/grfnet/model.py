@@ -15,9 +15,55 @@ _BASE_DILATIONS = (1, 2, 4, 8)
 
 
 class GRFNet(nn.Module):
-    """GRF-Net (Geometry-aware Rocket-Fusion Network) for multichannel time series: geometry-aware learnable spatial front-end -> ROCKET-style multi-dilation conv bank -> fusion pooling -> gated embedding -> head. statistics selects the fusion streams; learnable_per_group=0 is the pure-fixed-bank ablation. Accepts inputs of any length; n_times is recorded only.
+    """Geometry-aware Rocket-Fusion Network.
 
-    head is "linear" (needs n_outputs or its alias n_classes), None (forward returns the embedding), an nn.Module, or a callable mapping embedding_dim to an nn.Module."""
+    Spatial filters mix the input channels, a bank of frozen and learnable dilated kernels
+    extracts features, and pooled statistics are fused by a softmax gate into an embedding
+    for the head. Inputs may have any length.
+
+    Parameters
+    ----------
+    n_channels : int
+        Number of input channels.
+    n_times : int, optional
+        Expected input length. Stored for reference only.
+    n_classes, n_outputs : int, optional
+        Size of the linear head. ``n_classes`` is an alias of ``n_outputs``.
+    head : {"linear", None} or nn.Module or callable
+        ``None`` returns the embedding. A callable receives ``embedding_dim`` and returns a module.
+    sfreq : float, optional
+        Sampling rate. Rescales the base dilations from their 250 Hz definition.
+    spatial_components : int
+        Number of spatial filters.
+    spatial_init : {"random", "geometry"}, optional
+        Defaults to geometry when ``channel_names`` or ``channel_coords`` is given.
+    channel_names : list of str, optional
+        10-20 electrode names, resolved to positions with MNE.
+    channel_coords : array of shape (n_channels, d), optional
+        Sensor positions for geometry seeding.
+    kernel_length : int
+        Length of every bank kernel. Must be odd.
+    base_dilations, dilations : sequence of int, optional
+        ``dilations`` are used as given; ``base_dilations`` are rescaled by ``sfreq``.
+    fixed_per_group, learnable_per_group : int
+        Frozen and learnable kernels per spatial filter and dilation.
+    statistics : sequence of str or callable
+        Pooling statistics: "ppv", "logvar" (or "bandpower"), "mean", "max", "std", or
+        functions mapping (batch, features, time) to (batch, features).
+    ppv_tau, ppv_bias : float, bool
+        Temperature of the soft PPV and whether to learn its threshold.
+    logvar_eps : float
+        Variance floor for "logvar" and "std".
+    dropout : float
+        Dropout before the head.
+    bank_seed : int, optional
+        Seed for the frozen kernels, independent of the global generator.
+
+    References
+    ----------
+    Dempster, Petitjean and Webb (2020). ROCKET: exceptionally fast and accurate time series
+    classification using random convolutional kernels. Data Mining and Knowledge Discovery.
+    """
 
     def __init__(
         self,
@@ -84,7 +130,6 @@ class GRFNet(nn.Module):
             raise ValueError(f"n_times must be >= 1; got {n_times}")
         if sfreq is not None and sfreq <= 0:
             raise ValueError(f"sfreq must be positive; got {sfreq}")
-        # Explicit dilations are used as given. Otherwise base dilations are set at 250 Hz and rescaled by sfreq.
         if dilations is not None:
             if sfreq is not None or base_dilations is not None:
                 raise ValueError("pass dilations on its own, or sfreq and base_dilations, not both")
@@ -116,7 +161,7 @@ class GRFNet(nn.Module):
         self.sfreq = sfreq
         self.statistics = statistics
         self.n_statistics = len(statistics)
-        # Built-in names, or "custom" with the function kept in _custom_statistics.
+        # TorchScript needs plain names; custom functions are looked up by index.
         self._stat_names = [key if isinstance(key, str) else _CUSTOM for key in stat_keys]
         self._custom_statistics = {i: key for i, key in enumerate(stat_keys) if not isinstance(key, str)}
         self.ppv_tau = ppv_tau
@@ -172,7 +217,6 @@ class GRFNet(nn.Module):
         return stream
 
     def _pool(self, feats: torch.Tensor) -> torch.Tensor:
-        """Fuse statistics over the time axis into (batch, len(statistics) * n_features)."""
         streams = []
         for i, key in enumerate(self._stat_names):
             if key == "ppv":
@@ -192,15 +236,13 @@ class GRFNet(nn.Module):
         return torch.cat(streams, dim=-1)
 
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
-        """Gated fusion embedding (batch, embedding_dim): the head's input, before dropout."""
+        """Return the gated embedding the head receives, shape (batch, embedding_dim)."""
         if x.dim() != 3:
             raise ValueError(f"expected (batch, n_channels, n_times); got {x.shape}")
         if x.shape[1] != self.n_channels:
             raise ValueError(f"expected {self.n_channels} channels; got {x.shape[1]}")
-        components = self.spatial(x)  # (batch, spatial_components, n_times)
-        feats = self.feature_norm(self.bank(components))  # (batch, n_features, n_times)
+        feats = self.feature_norm(self.bank(self.spatial(x)))
         pooled = self._pool(feats)
-        # Soft per-stream gating over the pooled statistic blocks.
         gate = torch.softmax(self.stream_gate, dim=0)
         blocks = []
         for i in range(self.n_statistics):
@@ -219,7 +261,7 @@ class GRFNet(nn.Module):
 
     @torch.jit.unused
     def get_config(self) -> dict:
-        """Constructor arguments as JSON-compatible values. Raises for custom heads and statistics, which cannot be stored."""
+        """Constructor arguments as JSON-friendly values. Custom heads and statistics cannot be stored."""
         config = dict(self._config)
         if config["head"] == _CUSTOM:
             raise ValueError("a custom head cannot be stored in a config; rebuild the model in code and load its state_dict")
@@ -233,17 +275,16 @@ class GRFNet(nn.Module):
 
     @classmethod
     def from_config(cls, config: dict) -> "GRFNet":
-        """Build an untrained model from get_config() output."""
         return cls(**config)
 
     @torch.jit.unused
     def save(self, path, *, metadata: dict | None = None) -> None:
-        """Write config, weights and optional metadata (plain Python values) to a checkpoint file."""
+        """Save config, weights and optional metadata to one file."""
         save_checkpoint(self, path, metadata=metadata)
 
     @classmethod
     def load(cls, path, *, map_location="cpu") -> "GRFNet":
-        """Rebuild a model saved with save(). Returns it in eval mode."""
+        """Rebuild a model written by ``save``, in eval mode."""
         checkpoint = load_checkpoint(path, map_location=map_location)
         if checkpoint["model"] != cls.__name__:
             raise ValueError(f"checkpoint holds a {checkpoint['model']}, not a {cls.__name__}")

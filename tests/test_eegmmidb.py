@@ -132,6 +132,17 @@ def test_channel_selection_and_subsets(monkeypatch, tmp_path):
         data.pick_channels(["O1"])
 
 
+def test_loading_progress_modes(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(eegmmidb, "_read_run", _fake_reader())
+    root = _fake_root(tmp_path)
+    quiet = load_epochs(root, progress=False)
+    assert capsys.readouterr().err == ""
+    monkeypatch.setattr(eegmmidb, "use_bars", lambda progress: False)
+    lines = load_epochs(root, progress=None)
+    assert "loaded subject 2 (2/2)" in capsys.readouterr().err
+    assert np.array_equal(quiet.X, lines.X)
+
+
 def test_cache_skips_reading(monkeypatch, tmp_path):
     calls: list[str] = []
     monkeypatch.setattr(eegmmidb, "_read_run", _fake_reader(calls))

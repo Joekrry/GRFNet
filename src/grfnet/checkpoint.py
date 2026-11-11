@@ -1,4 +1,4 @@
-"""Checkpoint files shared by GRF-Net models."""
+"""Checkpoint format shared by GRF-Net models."""
 
 import torch
 from torch import nn
@@ -7,7 +7,7 @@ CHECKPOINT_FORMAT = "grfnet-checkpoint-1"
 
 
 def save_checkpoint(model: nn.Module, path, *, metadata: dict | None = None) -> None:
-    """Write model.get_config(), the state_dict and optional metadata (plain Python values) to path."""
+    """Save ``model.get_config()``, the state dict and metadata (plain Python values)."""
     from . import __version__
 
     get_config = getattr(model, "get_config", None)
@@ -27,7 +27,7 @@ def save_checkpoint(model: nn.Module, path, *, metadata: dict | None = None) -> 
 
 
 def load_checkpoint(path, *, map_location="cpu") -> dict:
-    """Read a checkpoint written by save() without building the model. Keys: format, model, grfnet_version, config, state_dict, metadata."""
+    """Read a checkpoint dict without building the model."""
     checkpoint = torch.load(path, map_location=map_location, weights_only=True)
     if not isinstance(checkpoint, dict) or checkpoint.get("format") != CHECKPOINT_FORMAT:
         raise ValueError(f"{path} is not a GRFNet checkpoint")

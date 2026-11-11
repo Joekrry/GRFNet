@@ -14,7 +14,11 @@ All notable changes to this project are documented here. The format follows
 - `python -m grfnet.train`: TOML-configured training with subject-disjoint folds, validation-based model selection, seeds, checkpoints, CSV and JSON logs, predictions and per-subject metrics.
 - `python -m grfnet.evaluate`: checkpoint testing and a paired Wilcoxon comparison of two runs, in the optional `eval` extra.
 - `grfnet.experiments`: config, split, metric and runner functions behind both commands.
-- `configs/eegmmidb_imagery_lr.toml`: baseline with `dilations = [1, 2, 3, 5]` at 160 Hz.
+- tqdm progress bars for training epochs (with a count of completed folds), dataset loading and the dataset survey, with `--no-progress` on both commands. tqdm is added to the `eeg` extra.
+- `python -m grfnet.report`: run reports with training curves, a confusion matrix, per-subject and per-fold scores, spatial filters and activation patterns, kernel frequency responses, stream gates, a t-SNE of the embeddings, input saliency and an efficiency benchmark (parameters, operations, latency, throughput, training time), written as figures, `report.md`, `report.json` and `efficiency.json`.
+- Standard run names, `{model}_{dataset}_{task}[_rest][_{variant}]`, derived from the config. Dataset reports go to `runs/dataset_{dataset}_{task}` and config files are named after their run.
+- scikit-learn in the `viz` extra, for t-SNE. Without it, embeddings are projected with PCA.
+- `configs/grfnet_eegmmidb_imagery_lr.toml`: baseline with `dilations = [1, 2, 3, 5]` at 160 Hz.
 
 ## [0.1.0] - 2026-11-07
 

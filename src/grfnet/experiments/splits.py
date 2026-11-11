@@ -12,10 +12,7 @@ SPLITS_FORMAT = "grfnet-splits-1"
 
 
 def subject_kfold(subjects: Sequence[int], n_folds: int, *, val_fraction: float = 0.1, seed: int = 0) -> list[dict]:
-    """Folds where each subject is in exactly one test set. Validation subjects come from the rest.
-
-    Returns [{"fold", "train", "val", "test"}] with sorted subject lists.
-    """
+    """Subject-wise k-fold: every subject is tested once, and validation subjects come from the rest."""
     subjects = sorted({int(s) for s in subjects})
     if n_folds < 2 or n_folds > len(subjects):
         raise ValueError(f"n_folds must be in 2..{len(subjects)} for {len(subjects)} subjects; got {n_folds}")

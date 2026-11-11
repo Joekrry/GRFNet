@@ -1,7 +1,4 @@
-"""PhysioNet EEG Motor Movement/Imagery Dataset (EEGMMIDB) loader.
-
-Reads the EDF files and their embedded annotations. Requires the eeg extra.
-"""
+"""Loader for the PhysioNet EEG Motor Movement/Imagery Dataset (EEGMMIDB)."""
 
 from __future__ import annotations
 
@@ -15,11 +12,13 @@ from pathlib import Path
 
 import numpy as np
 
+from .._progress import bar, use_bars
+
 SFREQ = 160.0
 N_SUBJECTS = 109
 ROOT_ENV = "GRFNET_EEGMMIDB"
 DEFAULT_ROOT = Path("src/dataset/files")
-# Recorded at 128 Hz; resampled to the requested rate on load.
+# Recorded at 128 Hz instead of 160 Hz.
 RESAMPLED_SUBJECTS = (88, 92, 100)
 
 RUN_DESCRIPTIONS = {
@@ -56,7 +55,7 @@ REST = "rest"
 
 @dataclass
 class EpochsData:
-    """Epoched trials. X is (n_trials, n_channels, n_times) in microvolts."""
+    """Epoched trials with X of shape (n_trials, n_channels, n_times), in microvolts."""
 
     X: np.ndarray
     y: np.ndarray
@@ -80,19 +79,17 @@ class EpochsData:
         return self.tmin + np.arange(self.X.shape[-1]) / self.sfreq
 
     def select(self, mask: np.ndarray) -> EpochsData:
-        """Subset of trials by boolean mask or index array."""
         return EpochsData(self.X[mask], self.y[mask], self.subjects[mask], self.runs[mask],
                           list(self.ch_names), self.sfreq, self.tmin, self.class_names, dict(self.info))
 
     def pick_channels(self, names: Sequence[str]) -> EpochsData:
-        """Copy with only the named channels, in the given order."""
         index = [_channel_index(self.ch_names, name) for name in names]
         return EpochsData(self.X[:, index], self.y, self.subjects, self.runs, [self.ch_names[i] for i in index],
                           self.sfreq, self.tmin, self.class_names, dict(self.info))
 
 
 def clean_channel_name(name: str) -> str:
-    """EDF label to 10-10 spelling, e.g. 'Fc5.' -> 'FC5', 'Fpz.' -> 'Fpz', 'Iz..' -> 'Iz'."""
+    """Convert an EDF label to 10-10 spelling, e.g. 'Fc5.' -> 'FC5', 'Fpz.' -> 'Fpz'."""
     label = name.strip().rstrip(".").upper()
     if label.endswith("Z"):
         label = label[:-1] + "z"
@@ -102,12 +99,11 @@ def clean_channel_name(name: str) -> str:
 
 
 def default_root() -> Path:
-    """Dataset folder from the GRFNET_EEGMMIDB variable, else src/dataset/files."""
     return Path(os.environ.get(ROOT_ENV, DEFAULT_ROOT))
 
 
 def parse_subjects(spec: str | int | Iterable[int] | None) -> list[int] | None:
-    """Subject numbers from '1-10,12' style text, one number or an iterable. None means all."""
+    """Parse '1-10,12', a number or an iterable into sorted subject numbers. ``None`` means all."""
     if spec is None:
         return None
     if isinstance(spec, int):
@@ -132,13 +128,11 @@ def run_path(root: str | Path, subject: int, run: int) -> Path:
 
 
 def list_subjects(root: str | Path | None = None) -> list[int]:
-    """Subjects with a folder under root."""
     root = _check_root(root)
     return sorted(int(p.name[1:]) for p in root.iterdir() if p.is_dir() and p.name[:1] == "S" and p.name[1:].isdigit())
 
 
 def task_classes(task: str, include_rest: bool = False) -> tuple[tuple[str, ...], dict[int, dict[str, str]]]:
-    """Class names and per-run annotation mapping for a task."""
     if task not in TASKS:
         raise ValueError(f"unknown task {task!r}; choose from {sorted(TASKS)}")
     events = {run: dict(mapping) for run, mapping in TASKS[task].items()}
@@ -165,12 +159,34 @@ def load_epochs(
     include_rest: bool = False,
     channels: Sequence[str] | None = None,
     cache_dir: str | Path | None = None,
-    progress: bool = False,
+    progress: bool | None = False,
 ) -> EpochsData:
-    """Epoch trials of a task into (n_trials, n_channels, n_times) microvolt arrays.
+    """Load cue-locked epochs for a task.
 
-    Each epoch spans [onset + tmin, onset + tmax) and has round((tmax - tmin) * sfreq) samples.
-    Filtering runs before resampling. Epochs that overrun the recording are dropped.
+    Parameters
+    ----------
+    root : path, optional
+        Folder holding S001 to S109. Defaults to ``$GRFNET_EEGMMIDB`` or ``src/dataset/files``.
+    task : str
+        A key of ``TASKS``, such as "imagery_lr".
+    subjects : str or iterable of int, optional
+        For example "1-10,12". Defaults to every subject found.
+    tmin, tmax : float
+        Window in seconds relative to the cue.
+    sfreq : float
+        Output sampling rate. Other rates are resampled.
+    l_freq, h_freq : float, optional
+        Band-pass edges, applied to the continuous run before resampling.
+    include_rest : bool
+        Add the T0 periods as a final "rest" class.
+    channels : list of str, optional
+        Channels to keep, in order.
+    cache_dir : path, optional
+        Per-subject cache, keyed on the options above.
+    progress : bool, optional
+        Show a progress bar. ``None`` shows one only in a terminal.
+
+    Epochs that run past the end of a recording are dropped.
     """
     if tmax <= tmin:
         raise ValueError(f"tmax must exceed tmin; got tmin={tmin}, tmax={tmax}")
@@ -181,14 +197,17 @@ def load_epochs(
               "h_freq": h_freq, "include_rest": include_rest}
 
     parts, ch_names = [], None
-    for i, subject in enumerate(chosen):
+    bars = progress is not False and use_bars(progress)
+    subject_bar = bar(chosen, enabled=bars, desc="loading subjects", unit="subject", leave=False)
+    for i, subject in enumerate(subject_bar):
         part = _load_subject(root, subject, events, class_names, params, cache_dir)
         if ch_names is None:
             ch_names = part["ch_names"]
         elif part["ch_names"] != ch_names:
             raise ValueError(f"subject {subject} has different channels from subject {chosen[0]}")
         parts.append(part)
-        if progress:
+        subject_bar.set_postfix(subject=subject, trials=sum(len(p["y"]) for p in parts), refresh=False)
+        if progress is not False and not bars:
             print(f"loaded subject {subject} ({i + 1}/{len(chosen)}): {len(part['y'])} trials", file=sys.stderr)
 
     n_times = int(round((tmax - tmin) * sfreq))
@@ -206,12 +225,15 @@ def load_epochs(
     return data.pick_channels(channels) if channels is not None else data
 
 
-def survey_recordings(root: str | Path | None = None, subjects: str | Iterable[int] | None = None) -> list[dict]:
-    """One row per EDF file with its sampling rate, duration and annotation counts. Reads headers only."""
+def survey_recordings(root: str | Path | None = None, subjects: str | Iterable[int] | None = None, *,
+                      progress: bool | None = False) -> list[dict]:
+    """Sampling rate, duration and annotation counts of every EDF file, from the headers."""
     mne = _import_mne()
     root = _check_root(root)
     rows = []
-    for subject in parse_subjects(subjects) or list_subjects(root):
+    chosen = parse_subjects(subjects) or list_subjects(root)
+    enabled = progress is not False and use_bars(progress)
+    for subject in bar(chosen, enabled=enabled, desc="surveying recordings", unit="subject", leave=False):
         for run in RUN_DESCRIPTIONS:
             path = run_path(root, subject, run)
             if not path.exists():
@@ -270,7 +292,7 @@ def _load_subject(root, subject, events, class_names, params, cache_dir) -> dict
 
 def _read_run(path: Path, sfreq: float, l_freq: float | None,
               h_freq: float | None) -> tuple[np.ndarray, list[str], np.ndarray, np.ndarray]:
-    """Signal in microvolts at sfreq, cleaned channel names, onsets (s) and annotation codes."""
+    """Return the signal in microvolts, channel names, cue onsets in seconds and their codes."""
     mne = _import_mne()
     raw = mne.io.read_raw_edf(path, preload=True, verbose="error")
     if l_freq is not None or h_freq is not None:

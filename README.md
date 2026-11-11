@@ -5,50 +5,52 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![PyTorch 2.2+](https://img.shields.io/badge/PyTorch-2.2%2B-ee4c2c.svg)](https://pytorch.org/)
 
-Yes I AI generate my personal project README's
+GRF-Net is a compact PyTorch model for multichannel time series such as EEG. It
+learns spatial filters over the input channels, optionally seeded from sensor
+positions, and extracts features with a mostly frozen ROCKET-style bank of
+dilated convolutions [1]. Several temporal statistics are fused through a
+learned gate into an embedding for a small trainable head. The frozen bank keeps
+the trainable parameter count in the low thousands.
 
-Compact PyTorch models for multichannel time series. GRF-Net models combine
-learnable spatial filters with a mostly frozen ROCKET-style convolution bank,
-then fuse several temporal statistics into an embedding for a small trainable
-head.
+```mermaid
+flowchart LR
+    A["Input<br/>(batch, channels, time)"] --> B["Spatial filters<br/>1x1 conv"]
+    B --> C["Dilated kernel bank<br/>frozen + learnable"]
+    C --> D["Fusion pooling<br/>PPV, log-variance, mean"]
+    D --> E["Gated embedding"]
+    E --> F["Head"]
+```
 
-## Models
+## Results
 
-| Model                                       | Mechanism                                                                 | State     | Output                   |
-| ------------------------------------------- | ------------------------------------------------------------------------- | --------- | ------------------------ |
-| [GRFNet](src/grfnet/models/grfnet/README.md) | Spatial filters, frozen and learnable dilated kernels, gated fusion pooling | Stateless | One vector per sequence |
+Cross-subject classification of imagined left versus right fist movement on
+EEGMMIDB [2]: 109 subjects, 5 subject-disjoint folds, 0-4 s after the cue at
+160 Hz, one seed.
 
-Each model's README covers its architecture, parameters, configuration,
-limitations and references.
+| Model  | Trainable / frozen parameters | Balanced accuracy (pooled) | Per fold, mean (SD) | Per subject, mean (SD) | Cohen's kappa |
+| ------ | ----------------------------- | -------------------------- | ------------------- | ---------------------- | ------------- |
+| GRFNet | 3,365 / 1,152                 | 0.698                      | 0.699 (0.040)       | 0.700 (0.128)          | 0.395         |
+
+Chance is 0.50. Config: [`configs/grfnet_eegmmidb_imagery_lr.toml`](configs/grfnet_eegmmidb_imagery_lr.toml).
+See [Reproducing the results](#reproducing-the-results).
 
 ## Installation
 
 ```bash
 git clone https://github.com/Joekrry/GRFNet.git
-```
-
-```bash
 cd GRFNet
+pip install -e ".[eeg,viz,eval]"
 ```
 
-```bash
-pip install -e .
-```
+Python 3.11+ and PyTorch 2.2+. The core package needs only PyTorch and NumPy.
 
-Requires Python 3.11 or later and PyTorch 2.2 or later. Optional extras add
-features:
-
-| Extra  | Adds                             | Needed for                           |
-| ------ | -------------------------------- | ------------------------------------ |
-| `eeg`  | MNE-Python                       | Looking up EEG electrode positions   |
-| `onnx` | onnx, onnxscript, ONNX Runtime   | `export_onnx`                        |
-| `viz`  | Matplotlib                       | Dataset reports and figures          |
-| `eval` | SciPy                            | Wilcoxon tests between runs          |
-| `dev`  | pytest, Ruff                     | Running the tests and linter         |
-
-```bash
-pip install -e ".[eeg,onnx]"
-```
+| Extra  | Adds                           | For                                              |
+| ------ | ------------------------------ | ------------------------------------------------ |
+| `eeg`  | MNE-Python, tqdm               | Electrode positions, dataset loading, progress   |
+| `viz`  | Matplotlib, scikit-learn       | Dataset and run reports                          |
+| `eval` | SciPy                          | Wilcoxon tests between runs                      |
+| `onnx` | onnx, onnxscript, ONNX Runtime | ONNX export                                      |
+| `dev`  | pytest, Ruff                   | Tests and linting                                |
 
 ## Quick start
 
@@ -57,154 +59,71 @@ import torch
 from grfnet import GRFNet
 
 model = GRFNet(n_channels=22, n_times=1000, n_classes=4, sfreq=250.0)
-
-x = torch.randn(8, 22, 1000)  # (batch, n_channels, n_times)
-logits = model(x)             # (batch, n_classes)
+logits = model(torch.randn(8, 22, 1000))  # (batch, n_classes)
 ```
 
-The model returns raw scores for use with `torch.nn.CrossEntropyLoss`. See the
-[GRFNet README](src/grfnet/models/grfnet/README.md) for regression, embeddings,
-custom heads, pooling statistics and geometry-seeded spatial filters.
+Regression, embeddings, custom heads, pooling statistics and geometry-seeded
+filters are covered in the [GRFNet README](src/grfnet/models/grfnet/README.md).
 
-## Datasets
+## Reproducing the results
 
-`grfnet.data` loads PhysioNet's EEG Motor Movement/Imagery Dataset (EEGMMIDB)
-into epoched arrays and writes dataset reports. The data is not part of the
-repository. See the [datasets README](src/grfnet/data/README.md) for where to
-put it, the available tasks and the loading options.
-
-```python
-from grfnet.data import load_epochs
-
-data = load_epochs(task="imagery_lr", subjects="1-10")  # data.X: (n_trials, 64, 640)
-```
-
-To write the dataset figures and summary tables to `runs/r0_dataset/`:
+1. Download [EEGMMIDB](https://physionet.org/content/eegmmidb/1.0.0/) into
+   `src/dataset/files` (or set `GRFNET_EEGMMIDB` to its folder).
+2. Train, evaluate and report:
 
 ```bash
-python -m grfnet.data report --cache-dir runs/cache
+python -m grfnet.data report --cache-dir runs/cache                  # dataset figures (optional)
+python -m grfnet.train configs/grfnet_eegmmidb_imagery_lr.toml              # 5-fold cross-subject training
+python -m grfnet.report runs/grfnet_eegmmidb_imagery_lr              # figures, tables, benchmark
+python -m grfnet.evaluate --compare runs/grfnet_eegmmidb_imagery_lr runs/<other run>   # paired Wilcoxon test
 ```
 
-Run outputs go under `runs/`, which Git ignores.
+Each run writes its config, splits, environment, logs, checkpoints, predictions
+and metrics to `runs/{model}_{dataset}_{task}/`. The report adds training curves, confusion
+matrix, per-subject scores, spatial patterns, kernel frequency responses,
+stream gates, embeddings, saliency and an efficiency benchmark. Details:
+[datasets](src/grfnet/data/README.md), [experiments](src/grfnet/experiments/README.md).
 
-## Training and evaluation
+## Models
 
-`python -m grfnet.train` runs a TOML-configured experiment with
-subject-disjoint cross-validation. It writes the configuration, splits,
-environment, training logs, checkpoints, predictions and metrics to
-`runs/<name>/`.
+| Model                                        | Mechanism                                                         | Output                  |
+| -------------------------------------------- | ----------------------------------------------------------------- | ----------------------- |
+| [GRFNet](src/grfnet/models/grfnet/README.md) | Spatial filters, frozen and learnable dilated kernels, gated pooling | One vector per sequence |
 
-```bash
-python -m grfnet.train configs/eegmmidb_imagery_lr.toml
-```
-
-```bash
-python -m grfnet.evaluate --checkpoint runs/grfnet_eegmmidb_imagery_lr/fold_0/best.pt
-```
-
-`python -m grfnet.evaluate --compare RUN_A RUN_B` compares two runs subject by
-subject with a Wilcoxon signed-rank test. See the
-[experiments README](src/grfnet/experiments/README.md) for the protocol, every
-config key and the run folder layout.
-
-## Saving and deployment
-
-### Checkpoints
-
-`save` writes the model's configuration, weights and optional metadata to one
-file. `load` rebuilds the model from it and returns it in eval mode:
-
-```python
-from grfnet import GRFNet, load_checkpoint
-
-model = GRFNet(n_channels=8, n_classes=2)
-model.save("grfnet.pt", metadata={"epoch": 40})
-
-restored = GRFNet.load("grfnet.pt")
-print(load_checkpoint("grfnet.pt")["metadata"])  # {'epoch': 40}
-```
-
-Checkpoints are read with `torch.load(..., weights_only=True)`. `get_config`
-returns the constructor arguments as JSON-compatible values, and `from_config`
-builds an untrained model from them. Custom heads and custom statistics are
-Python objects and cannot be stored: for those models, rebuild the model in code
-and load its `state_dict`.
-
-### Export and compilation
-
-| Target          | How                                                     | Notes                                                                                                  |
-| --------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `torch.export`  | `torch.export.export(model, (x,), dynamic_shapes=...)` | Batch size and input length can be dynamic.                                                            |
-| ONNX            | `export_onnx(model, "grfnet.onnx")`                     | Batch size and input length are dynamic by default. Needs the `onnx` extra.                            |
-| TorchScript     | `torch.jit.script(model)`                               | Not available with custom statistics. PyTorch no longer supports TorchScript on Python 3.14 or later. |
-| `torch.compile` | `torch.compile(model)`                                  | Compiles as a single graph.                                                                            |
+## Deployment
 
 ```python
 import torch
 from grfnet import GRFNet, export_onnx
 
-model = GRFNet(n_channels=8, n_classes=2).eval()
-export_onnx(model, "grfnet.onnx", n_times=256)
+model = GRFNet(n_channels=8, n_classes=2)
+model.save("grfnet.pt", metadata={"epoch": 40})   # config + weights, loaded with weights_only=True
+model = GRFNet.load("grfnet.pt")                   # returns the model in eval mode
 
-batch, n_times = torch.export.Dim("batch", min=1), torch.export.Dim("n_times", min=2)
-program = torch.export.export(model, (torch.randn(2, 8, 256),), dynamic_shapes={"x": {0: batch, 2: n_times}})
+export_onnx(model, "grfnet.onnx", n_times=256)     # dynamic batch and length; needs the onnx extra
 ```
 
-The ONNX file has one input, `input`, of shape `(batch, n_channels, n_times)`,
-and one output, `output`.
-
-### Mixed precision
-
-The models run under `torch.autocast`, with `float16` on CUDA and `bfloat16` on
-CPU.
+GRFNet also supports `torch.export` with dynamic batch and length,
+`torch.compile` as a single graph, TorchScript (not on Python 3.14+), and
+`torch.autocast`.
 
 ## Repository structure
 
 ```text
+configs/              experiment configs
 src/grfnet/
-  __init__.py        public API
-  layers.py          shared spatial front-end, convolution bank and dilation scaling
-  checkpoint.py      checkpoint files
-  export.py          ONNX export
-  channels.py        EEG electrode positions (eeg extra)
-  data/              dataset loaders and dataset reports, with a README
-  experiments/       configs, subject splits, metrics and the training runner, with a README
-  train.py           python -m grfnet.train
-  evaluate.py        python -m grfnet.evaluate
-  models/
-    grfnet/          GRFNet model and its README
-configs/             experiment configs
-tests/               unit tests and reference outputs
+  models/grfnet/      GRFNet model
+  layers.py           spatial front-end, kernel bank, dilation scaling
+  data/               EEGMMIDB loader and dataset report
+  experiments/        configs, splits, metrics, training runner
+  reporting/          run reports and efficiency benchmark
+  train.py, evaluate.py, report.py   command-line entry points
+tests/                unit tests and reference outputs
 ```
 
-## Testing
-
-```bash
-pip install -e ".[dev]"
-```
-
-```bash
-python -m pytest
-```
-
-Tests for optional features are skipped when their extra is not installed.
-Tests that read the EEGMMIDB files run only when the dataset is present. To run
-every other test, install all extras:
-
-```bash
-pip install -e ".[dev,eeg,onnx,viz,eval]"
-```
-
-To check the code with the linter:
-
-```bash
-ruff check .
-```
+Run `python -m pytest` and `ruff check .` after `pip install -e ".[dev]"`.
 
 ## Citation
-
-If you use GRF-Net in your work, please cite this repository. Citation details
-are also in [`CITATION.cff`](CITATION.cff).
 
 ```bibtex
 @software{kerry2026grfnet,
@@ -216,10 +135,15 @@ are also in [`CITATION.cff`](CITATION.cff).
 }
 ```
 
-## Changes
+## References
 
-See [`CHANGELOG.md`](CHANGELOG.md).
+1. Dempster, A., Petitjean, F. and Webb, G. I. (2020). ROCKET: exceptionally
+   fast and accurate time series classification using random convolutional
+   kernels. *Data Mining and Knowledge Discovery*, 34, 1454-1495.
+2. Schalk, G. et al. (2004). BCI2000: a general-purpose brain-computer
+   interface (BCI) system. *IEEE Transactions on Biomedical Engineering*,
+   51(6), 1034-1043.
 
 ## Licence
 
-Released under the [MIT License](LICENSE).
+[MIT](LICENSE). Changes are listed in [CHANGELOG.md](CHANGELOG.md).

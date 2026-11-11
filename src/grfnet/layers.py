@@ -1,4 +1,4 @@
-"""Building blocks shared by GRF-Net models: dilation scaling, geometry seeding, the spatial front-end and the convolution bank."""
+"""Spatial front-end and kernel bank shared by GRF-Net models."""
 
 import math
 import operator
@@ -10,7 +10,7 @@ _REFERENCE_SFREQ = 250.0
 
 
 def scale_dilations(base_dilations, sfreq: float, reference_sfreq: float = _REFERENCE_SFREQ) -> list[int]:
-    """Rescale dilations set at reference_sfreq to sfreq, rounding half up, with a minimum of 1."""
+    """Rescale dilations defined at ``reference_sfreq`` to ``sfreq`` (half-up rounding, minimum 1)."""
     if sfreq <= 0 or reference_sfreq <= 0:
         raise ValueError(f"sampling rates must be positive; got sfreq={sfreq}, reference_sfreq={reference_sfreq}")
     return [max(1, math.floor(b * sfreq / reference_sfreq + 0.5)) for b in base_dilations]
@@ -27,14 +27,13 @@ def _check_dilations(dilations) -> list[int]:
 
 
 def _rocket_init_(weight: torch.Tensor, generator: torch.Generator | None = None) -> None:
-    """Seed a conv weight (out, 1, K) ROCKET-style: random kernels, each mean-centred over its taps (so a constant input yields no response)."""
+    # Mean-centred Gaussian kernels, as in ROCKET.
     with torch.no_grad():
         weight.normal_(generator=generator)
         weight.sub_(weight.mean(dim=-1, keepdim=True))
 
 
 def _channel_coords_from_names(channel_names, n_channels: int):
-    """2-D coordinates for named EEG electrodes, via the 10-20 lookup."""
     from .channels import channel_positions
 
     names = list(channel_names)
@@ -46,10 +45,10 @@ def _channel_coords_from_names(channel_names, n_channels: int):
 
 
 def _coordinate_patterns(coords: torch.Tensor) -> list[torch.Tensor]:
-    """Smooth patterns over sensors at coords (n_channels, d): one gradient per axis, then the squared radius, cross products and differences of squares."""
+    # Low-order polynomials of the sensor positions: axes, radius, cross terms, differences of squares.
     axes = list(coords.T)
     family = list(axes)
-    # Left-to-right sum matches the reference outputs bit for bit.
+    # Summed left to right to match the reference outputs exactly.
     radius = axes[0] * axes[0]
     for a in axes[1:]:
         radius = radius + a * a
@@ -60,7 +59,10 @@ def _coordinate_patterns(coords: torch.Tensor) -> list[torch.Tensor]:
 
 
 def _geometry_seed_spatial_(weight: torch.Tensor, coords) -> int:
-    """Seed a spatial-conv weight (spatial_components, n_channels, 1) with coordinate patterns as unit-norm contrasts. Rows beyond the usable patterns keep their random init, rescaled to unit-norm contrasts. Returns the number of geometry-seeded rows."""
+    """Overwrite the first rows of a (components, channels, 1) weight with geometry patterns.
+
+    Every row ends up a zero-mean, unit-norm contrast. Returns the number of seeded rows.
+    """
     n_components, n_channels, _ = weight.shape
     coords = torch.as_tensor(coords, dtype=weight.dtype)
     if coords.dim() == 1:
@@ -76,10 +78,10 @@ def _geometry_seed_spatial_(weight: torch.Tensor, coords) -> int:
         feature = feature - feature.mean()
         norm = feature.norm()
         if norm <= 1e-6:
-            continue  # degenerate for this layout
+            continue  # constant over this layout
         feature = feature / norm
         if any(abs(torch.dot(feature, b)) > 1 - 1e-6 for b in basis):
-            continue  # duplicate of an earlier pattern
+            continue  # parallel to an earlier pattern
         basis.append(feature)
     if not basis:
         return 0
@@ -94,7 +96,7 @@ def _geometry_seed_spatial_(weight: torch.Tensor, coords) -> int:
 
 
 class SpatialFrontEnd(nn.Module):
-    """Learnable spatial mixer: a 1x1 conv over the input channels giving spatial_components components, then BatchNorm. Optionally geometry-seeded from sensor coordinates."""
+    """1x1 convolution over channels followed by BatchNorm, optionally seeded from sensor positions."""
 
     def __init__(
         self,
@@ -106,7 +108,6 @@ class SpatialFrontEnd(nn.Module):
         channel_coords=None,
     ) -> None:
         super().__init__()
-        # geometry is used when sensor positions are supplied and nothing else is asked for; random is the default
         if spatial_init is None:
             has_positions = channel_names is not None or channel_coords is not None
             spatial_init = "geometry" if has_positions else "random"
@@ -126,11 +127,14 @@ class SpatialFrontEnd(nn.Module):
             self.n_geometry_components = _geometry_seed_spatial_(self.conv.weight, channel_coords)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.bn(self.conv(x))  # (batch, spatial_components, n_times)
+        return self.bn(self.conv(x))
 
 
 class RocketFeatureBank(nn.Module):
-    """Multi-dilation depthwise conv bank over the spatial components: a frozen ROCKET-style kernel set (low variance) plus an optional few learnable kernels. One kernel group per dilation. seed draws the frozen kernels from a private generator instead of the global RNG."""
+    """Depthwise dilated convolutions: frozen random kernels plus optional learnable ones, per dilation.
+
+    ``seed`` draws the frozen kernels from a private generator.
+    """
 
     def __init__(
         self,
@@ -153,12 +157,11 @@ class RocketFeatureBank(nn.Module):
         s = spatial_components
 
         def _conv(out_per_group: int, dilation: int) -> nn.Conv1d:
-            # groups=s = depthwise
             return nn.Conv1d(
                 s,
                 s * out_per_group,
                 kernel_length,
-                padding=dilation * (kernel_length - 1) // 2,  # "same" length for odd kernels
+                padding=dilation * (kernel_length - 1) // 2,
                 dilation=dilation,
                 groups=s,
                 bias=False,
@@ -173,7 +176,7 @@ class RocketFeatureBank(nn.Module):
         for dilation in self.dilations:
             conv = _conv(fixed_per_group, dilation)
             _rocket_init_(conv.weight, generator)
-            conv.weight.requires_grad_(False)  # frozen ROCKET bank (low overfitting)
+            conv.weight.requires_grad_(False)
             self.fixed.append(conv)
 
         self.learnable = (
@@ -187,13 +190,13 @@ class RocketFeatureBank(nn.Module):
         for conv in self.fixed:
             fixed_maps.append(conv(x))
         if self.learnable is None:
-            return torch.cat(fixed_maps, dim=1)  # (batch, n_features, n_times)
+            return torch.cat(fixed_maps, dim=1)
         learnable_maps = []
         for conv in self.learnable:
             learnable_maps.append(conv(x))
-        # Interleaved per dilation: fixed group, then learnable group.
+        # Keep each dilation's fixed and learnable maps together.
         maps = []
         for i in range(len(fixed_maps)):
             maps.append(fixed_maps[i])
             maps.append(learnable_maps[i])
-        return torch.cat(maps, dim=1)  # (batch, n_features, n_times)
+        return torch.cat(maps, dim=1)

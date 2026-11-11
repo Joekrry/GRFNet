@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
+
+# Lowercase words joined by underscores, e.g. grfnet_eegmmidb_imagery_lr_geometry.
+_NAME = re.compile(r"[a-z0-9]+(_[a-z0-9]+)*")
+
+
+def run_name(model: str, dataset: str, task: str, *, include_rest: bool = False, variant: str | None = None) -> str:
+    """Standard run name: {model}_{dataset}_{task}, then _rest and _{variant} when they apply."""
+    parts = [model, dataset, task] + (["rest"] if include_rest else []) + ([variant] if variant else [])
+    return "_".join(p.lower() for p in parts)
 
 
 @dataclass
@@ -28,7 +38,7 @@ class DataConfig:
 
 @dataclass
 class SplitConfig:
-    # "kfold": subject-disjoint folds. "file": folds read from a splits.json.
+    # "kfold" or "file" (folds read from a splits.json)
     scheme: str = "kfold"
     n_folds: int = 5
     val_fraction: float = 0.1
@@ -50,7 +60,6 @@ class TrainingConfig:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     scheduler: str = "cosine"
-    # Epochs without validation improvement before stopping. None trains every epoch.
     patience: int | None = None
     device: str = "auto"
     amp: bool = False
@@ -59,12 +68,21 @@ class TrainingConfig:
 
 @dataclass
 class ExperimentConfig:
-    name: str = "experiment"
+    # Left out, the run is named by run_name(); variant tags a run that differs from its config.
+    name: str | None = None
+    variant: str | None = None
     seed: int = 0
     data: DataConfig = field(default_factory=DataConfig)
     split: SplitConfig = field(default_factory=SplitConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
+
+    @property
+    def run_name(self) -> str:
+        if self.name:
+            return self.name
+        return run_name(self.model.name, self.data.dataset, self.data.task, include_rest=self.data.include_rest,
+                        variant=self.variant)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -77,6 +95,9 @@ class ExperimentConfig:
         return _build(cls, {**values, **built}, "top level")
 
     def validate(self) -> ExperimentConfig:
+        for key, value in (("name", self.name), ("variant", self.variant)):
+            if value is not None and not _NAME.fullmatch(value):
+                raise ValueError(f"{key} must be lowercase letters and digits joined by underscores; got {value!r}")
         if self.data.normalize not in ("global", "none"):
             raise ValueError(f"data.normalize must be 'global' or 'none'; got {self.data.normalize!r}")
         if self.split.scheme not in ("kfold", "file"):
@@ -95,7 +116,7 @@ class ExperimentConfig:
 
 
 def load_config(path: str | Path, overrides: list[str] | None = None) -> ExperimentConfig:
-    """Read a TOML config, then apply 'section.key=value' overrides written as TOML values."""
+    """Read a TOML config and apply ``section.key=value`` overrides."""
     with open(path, "rb") as f:
         values = tomllib.load(f)
     for item in overrides or []:
@@ -104,7 +125,7 @@ def load_config(path: str | Path, overrides: list[str] | None = None) -> Experim
 
 
 def apply_override(values: dict, item: str) -> None:
-    """Set a dotted key in a nested dict. Values parse as TOML, else as plain strings."""
+    # Values parse as TOML where possible: "3" becomes an int, "1-10" stays a string.
     key, sep, raw = item.partition("=")
     if not sep or not key.strip():
         raise ValueError(f"override must look like section.key=value; got {item!r}")
@@ -120,7 +141,7 @@ def apply_override(values: dict, item: str) -> None:
 
 
 def to_toml(config: ExperimentConfig) -> str:
-    """TOML text for a config. None values are omitted; every optional field defaults to None."""
+    # TOML has no null. None fields are omitted and reload as their default, which is None for every optional field.
     values = config.to_dict()
     lines = [f"{key} = {_toml_value(value)}" for key, value in values.items()
              if not isinstance(value, dict) and value is not None]
