@@ -14,11 +14,19 @@ python -m grfnet.evaluate --compare runs/grfnet_eegmmidb_imagery_lr runs/grfnet_
 python -m grfnet.report runs/grfnet_eegmmidb_imagery_lr                       # figures, tables, benchmark
 ```
 
-| Command    | Options                                                                                                                                  |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `train`    | `--out DIR`, `--set KEY=VALUE` (TOML value, else text; repeatable), `--folds 0,2`, `--overwrite`, `--no-progress`                          |
-| `evaluate` | `--checkpoint PATH` or `--compare RUN_A RUN_B`; `--subjects`, `--root`, `--out`, `--metric`, `--device`                                   |
-| `report`   | `--out DIR`, `--fold K`, `--root`, `--no-data`, `--no-benchmark`, `--max-trials N`, `--dpi`, `--device`, `--no-progress`                   |
+| Command    | Options                                                                                                                                 |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `train`    | `--out DIR`, `--set KEY=VALUE` (TOML value, else text; repeatable), `--folds 0,2`, `--overwrite` (instead of resuming), `--no-progress` |
+| `evaluate` | `--checkpoint PATH` or `--compare RUN_A RUN_B`; `--subjects`, `--root`, `--out`, `--metric`, `--device`                                 |
+| `report`   | `--out DIR`, `--fold K`, `--root`, `--no-data`, `--no-benchmark`, `--max-trials N`, `--dpi`, `--device`, `--no-progress`                |
+
+**Stopping and resuming.** Press Ctrl+C once to finish the current fold and
+exit (the progress bar shows "stopping after this fold"); press it again to
+abort at once. Running the same command again resumes: folds with a
+`metrics.json` are read back, and any unfinished fold is trained from its
+start. Each fold is seeded on its own, so a resumed run gives the same results
+as an uninterrupted one. A different config in an existing folder needs
+`--overwrite`.
 
 Training shows a tqdm progress bar per fold in a terminal, and one line per
 epoch otherwise. `evaluate --checkpoint` reloads the data with the options the
@@ -29,13 +37,13 @@ model was trained with and tests the fold's own test subjects by default.
 Runs are named `{model}_{dataset}_{task}` in lowercase, with `_rest` when the
 rest class is included and `_{variant}` for a variant of a config:
 
-| Output         | Location                                          | Example                                        |
-| -------------- | ------------------------------------------------- | ---------------------------------------------- |
-| Config         | `configs/{model}_{dataset}_{task}.toml`           | `configs/grfnet_eegmmidb_imagery_lr.toml`      |
-| Training run   | `runs/{model}_{dataset}_{task}[_{variant}]/`      | `runs/grfnet_eegmmidb_imagery_lr_geometry/`    |
-| Run report     | `runs/{run}/report/`                              | `runs/grfnet_eegmmidb_imagery_lr/report/`      |
-| Dataset report | `runs/dataset_{dataset}_{task}/`                  | `runs/dataset_eegmmidb_imagery_lr/`            |
-| Epoch cache    | `runs/cache/`                                     |                                                |
+| Output         | Location                                     | Example                                     |
+| -------------- | -------------------------------------------- | ------------------------------------------- |
+| Config         | `configs/{model}_{dataset}_{task}.toml`      | `configs/grfnet_eegmmidb_imagery_lr.toml`   |
+| Training run   | `runs/{model}_{dataset}_{task}[_{variant}]/` | `runs/grfnet_eegmmidb_imagery_lr_geometry/` |
+| Run report     | `runs/{run}/report/`                         | `runs/grfnet_eegmmidb_imagery_lr/report/`   |
+| Dataset report | `runs/dataset_{dataset}_{task}/`             | `runs/dataset_eegmmidb_imagery_lr/`         |
+| Epoch cache    | `runs/cache/`                                |                                             |
 
 Set `variant` in the config or with `--set variant=geometry`. `name` overrides
 the whole run name and `--out` the folder; both should be the exception.
@@ -45,8 +53,12 @@ the whole run name and `--out` the folder; both should be the exception.
 - **Splits.** Subjects are shuffled with `seed` and dealt into `n_folds` test
   groups. `val_fraction` of the remaining subjects is held out for validation.
   No subject is in two sets of a fold. Folds are saved to `splits.json`.
-- **Normalisation.** Trials are divided by the standard deviation of the fold's
-  training trials, keeping relative power between channels.
+- **Normalisation.** `global` divides trials by the standard deviation of the
+  fold's training trials, keeping relative power between channels.
+  `euclidean` whitens each subject's trials by that subject's mean covariance,
+  `X_i <- R^(-1/2) X_i` [2], so every subject has an identity mean covariance.
+  It uses no labels. Test subjects are aligned with their own unlabelled
+  trials, which assumes those trials are all available (offline evaluation).
 - **Training.** AdamW, cross-entropy and cosine decay. Frozen kernels are not
   optimised.
 - **Selection.** The epoch with the highest validation balanced accuracy,
@@ -61,8 +73,6 @@ Omitted keys take these defaults. TOML has no null: leaving out an optional key
 turns it off.
 
 ```toml
-# name = "..."              # default: {model}_{dataset}_{task}[_rest][_{variant}]
-# variant = "geometry"
 seed = 0
 
 [data]
@@ -72,7 +82,7 @@ tmin = 0.0
 tmax = 4.0
 sfreq = 160.0
 include_rest = false
-normalize = "global"        # or "none"
+normalize = "global"        # "euclidean" (per-subject alignment) or "none"
 # root, subjects, l_freq, h_freq, channels, cache_dir: see the datasets README
 
 [split]
@@ -115,24 +125,25 @@ runs/<run name>/
   report/                              python -m grfnet.report
 ```
 
-| Report file            | Content                                                                                       |
-| ---------------------- | --------------------------------------------------------------------------------------------- |
-| `report.md`, `.json`   | Results, per-fold table, efficiency and all figures.                                          |
+| Report file            | Content                                                                                                    |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `report.md`, `.json`   | Results, per-fold table, efficiency and all figures.                                                       |
 | `efficiency.json`      | Parameters, FLOPs per trial, checkpoint size, CPU and CUDA latency and throughput, training time, machine. |
-| `learning_curves.png`  | Loss and accuracy per fold; dots mark the selected epoch.                                     |
-| `confusion_matrix.png` | Pooled test confusion matrix.                                                                 |
-| `subject_scores.png`   | Balanced accuracy per subject and per fold, against chance.                                   |
-| `stream_gates.png`     | Gate weight of each pooling statistic per fold.                                               |
-| `spatial_filters.png`  | Spatial filter weights.                                                                       |
-| `kernel_responses.png` | Frequency responses of frozen and learnable kernels per dilation.                             |
-| `spatial_patterns.png` | Activation patterns `A = C W^T (W C W^T)^-1` from the test data [1]. *                        |
-| `embeddings.png`       | t-SNE of the embedding (PCA without scikit-learn), by class and by correctness. *             |
-| `saliency.png`         | Mean \|gradient x input\| per channel and over time. *                                        |
+| `learning_curves.png`  | Loss and accuracy per fold; dots mark the selected epoch.                                                  |
+| `confusion_matrix.png` | Pooled test confusion matrix.                                                                              |
+| `subject_scores.png`   | Balanced accuracy per subject and per fold, against chance.                                                |
+| `stream_gates.png`     | Gate weight of each pooling statistic per fold.                                                            |
+| `spatial_filters.png`  | Spatial filter weights.                                                                                    |
+| `kernel_responses.png` | Frequency responses of frozen and learnable kernels per dilation.                                          |
+| `spatial_patterns.png` | Activation patterns `A = C W^T (W C W^T)^-1` from the test data [1]. \*                                    |
+| `embeddings.png`       | t-SNE of the embedding (PCA without scikit-learn), by class and by correctness. \*                         |
+| `saliency.png`         | Mean \|gradient x input\| per channel and over time. \*                                                    |
 
 Model figures use the lowest fold's checkpoint unless `--fold` is given. Figures
-marked * read that fold's test data and are skipped, with a note, if the dataset
+marked \* read that fold's test data and are skipped, with a note, if the dataset
 is missing. Timings depend on the machine.
 
 ## References
 
-1. Haufe, S. et al. (2014). On the interpretation of weight vectors of linear models in multivariate neuroimaging. *NeuroImage*, 87, 96-110.
+1. Haufe, S. et al. (2014). On the interpretation of weight vectors of linear models in multivariate neuroimaging. _NeuroImage_, 87, 96-110.
+2. He, H. and Wu, D. (2019). Transfer learning for brain-computer interfaces: a Euclidean space data alignment approach. _IEEE Transactions on Biomedical Engineering_, 67(2), 399-410.

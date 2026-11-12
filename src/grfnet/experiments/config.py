@@ -32,7 +32,8 @@ class DataConfig:
     include_rest: bool = False
     channels: list[str] | None = None
     cache_dir: str | None = None
-    # "global" divides by the training-set standard deviation; "none" leaves microvolts.
+    # "global" divides by the training-set standard deviation; "euclidean" whitens each subject by its own mean
+    # covariance; "none" leaves microvolts.
     normalize: str = "global"
 
 
@@ -98,8 +99,8 @@ class ExperimentConfig:
         for key, value in (("name", self.name), ("variant", self.variant)):
             if value is not None and not _NAME.fullmatch(value):
                 raise ValueError(f"{key} must be lowercase letters and digits joined by underscores; got {value!r}")
-        if self.data.normalize not in ("global", "none"):
-            raise ValueError(f"data.normalize must be 'global' or 'none'; got {self.data.normalize!r}")
+        if self.data.normalize not in ("global", "euclidean", "none"):
+            raise ValueError(f"data.normalize must be 'global', 'euclidean' or 'none'; got {self.data.normalize!r}")
         if self.split.scheme not in ("kfold", "file"):
             raise ValueError(f"split.scheme must be 'kfold' or 'file'; got {self.split.scheme!r}")
         if self.split.scheme == "file" and not self.split.file:

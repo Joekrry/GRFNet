@@ -183,8 +183,76 @@ def test_run_experiment_is_reproducible_and_refuses_to_overwrite(monkeypatch, tm
     assert a["folds"][0]["test"] == b["folds"][0]["test"]
     assert [f["fold"] for f in a["folds"]] == [1]
     with pytest.raises(FileExistsError, match="overwrite"):
-        run_experiment(_config(root), tmp_path / "a", log=lambda *_: None)
-    run_experiment(_config(root), tmp_path / "a", folds=[0], overwrite=True, log=lambda *_: None)
+        run_experiment(_config(root, lr=0.01), tmp_path / "a", log=lambda *_: None)
+    run_experiment(_config(root, lr=0.01), tmp_path / "a", folds=[0], overwrite=True, log=lambda *_: None)
+
+
+@requires_torch()
+def test_stopped_run_resumes_to_the_uninterrupted_result(monkeypatch, tmp_path):
+    from grfnet.experiments.runner import RunStopped, run_experiment
+
+    root = _fake_dataset(monkeypatch, tmp_path)
+    full = run_experiment(_config(root), tmp_path / "full", log=lambda *_: None)
+
+    def stop_after_first_fold():
+        return (tmp_path / "part" / "fold_0" / "metrics.json").exists()
+
+    with pytest.raises(RunStopped, match="1/3 folds completed"):
+        run_experiment(_config(root), tmp_path / "part", log=lambda *_: None, stop=stop_after_first_fold)
+    assert (tmp_path / "part" / "fold_0" / "metrics.json").exists()
+    assert not (tmp_path / "part" / "fold_1").exists()
+    assert not (tmp_path / "part" / "results.json").exists()
+
+    lines = []
+    resumed = run_experiment(_config(root), tmp_path / "part", log=lines.append)
+    assert any("1/3 folds already completed" in line for line in lines)
+    assert resumed["test"] == full["test"]
+    assert [f["fold"] for f in resumed["folds"]] == [0, 1, 2]
+
+
+@requires_torch()
+def test_unfinished_fold_is_retrained_on_resume(monkeypatch, tmp_path):
+    from grfnet.experiments.runner import run_experiment
+
+    root = _fake_dataset(monkeypatch, tmp_path)
+    full = run_experiment(_config(root), tmp_path / "run", log=lambda *_: None)
+    (tmp_path / "run" / "fold_2" / "metrics.json").unlink()  # as if killed mid-fold
+    (tmp_path / "run" / "results.json").unlink()
+    resumed = run_experiment(_config(root), tmp_path / "run", log=lambda *_: None)
+    assert resumed["test"] == full["test"]
+
+
+def test_stop_handler_waits_for_the_fold_then_aborts_on_a_second_signal():
+    import signal
+
+    from grfnet.train import install_stop_handler
+
+    previous = signal.getsignal(signal.SIGINT)
+    messages = []
+    try:
+        stop = install_stop_handler(messages.append)
+        handler = signal.getsignal(signal.SIGINT)
+        assert callable(handler)
+        assert stop() is False
+        handler(signal.SIGINT, None)
+        assert stop() is True and "finishing the current fold" in messages[0]
+        with pytest.raises(KeyboardInterrupt):
+            handler(signal.SIGINT, None)
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+@requires_torch()
+def test_train_exits_130_when_stopped(monkeypatch, tmp_path):
+    from grfnet import train
+
+    root = _fake_dataset(monkeypatch, tmp_path)
+    config = tmp_path / "tiny.toml"
+    config.write_text(to_toml(_config(root)), encoding="utf-8")
+    monkeypatch.setattr(train, "install_stop_handler", lambda notify=print: lambda: True)
+    code = train.main([str(config), "--out", str(tmp_path / "run"), "--no-progress"])
+    assert code == train.STOPPED
+    assert not (tmp_path / "run" / "results.json").exists()
 
 
 @requires_torch()
@@ -207,6 +275,32 @@ def test_evaluate_checkpoint_reproduces_fold_metrics(monkeypatch, tmp_path):
     assert (tmp_path / "eval" / "predictions.csv").exists()
     other = evaluate_checkpoint(tmp_path / "run" / "fold_0" / "best.pt", subjects=[1, 2], device="cpu")
     assert other["subjects"] == [1, 2]
+
+
+@requires_torch()
+def test_euclidean_alignment_trains_and_reloads(monkeypatch, tmp_path):
+    from grfnet.experiments.runner import evaluate_checkpoint, load_dataset, run_experiment
+
+    root = _fake_dataset(monkeypatch, tmp_path)
+    config = _config(root)
+    config.data.normalize = "euclidean"
+    data = load_dataset(config.validate().data)
+    X = data.X[data.subjects == 1]
+    X = X - X.mean(axis=-1, keepdims=True)
+    covariance = np.einsum("nct,ndt->cd", X, X) / (X.shape[0] * X.shape[-1])
+    np.testing.assert_allclose(covariance, np.eye(len(data.ch_names)), atol=1e-3)
+
+    summary = run_experiment(config, tmp_path / "run", folds=[0], log=lambda *_: None)
+    assert summary["folds"][0]["scale"] == 1.0
+    result = evaluate_checkpoint(tmp_path / "run" / "fold_0" / "best.pt", device="cpu")
+    assert result["test"] == summary["folds"][0]["test"]
+
+
+def test_unknown_normalisation_is_rejected():
+    config = ExperimentConfig()
+    config.data.normalize = "zscore"
+    with pytest.raises(ValueError, match="euclidean"):
+        config.validate()
 
 
 @requires_torch()

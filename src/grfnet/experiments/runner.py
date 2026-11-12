@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
@@ -20,11 +21,16 @@ from torch import nn
 from torch.amp.grad_scaler import GradScaler
 
 from .._progress import bar, use_bars, writer
+from ..data.alignment import euclidean_alignment
 from ..data.eegmmidb import EpochsData, load_epochs
 from ..models import GRFNet
-from .config import DataConfig, ExperimentConfig, ModelConfig, to_toml
+from .config import DataConfig, ExperimentConfig, ModelConfig, load_config, to_toml
 from .metrics import classification_metrics, per_subject_scores
 from .splits import check_folds, load_splits, save_splits, subject_kfold
+
+
+class RunStopped(Exception):
+    """A run ended between folds by a stop request. Finished folds are kept for resuming."""
 
 
 def seed_everything(seed: int, deterministic: bool = False) -> None:
@@ -45,10 +51,14 @@ def resolve_device(name: str) -> torch.device:
 def load_dataset(config: DataConfig, subjects=None, *, progress: bool | None = False) -> EpochsData:
     if config.dataset != "eegmmidb":
         raise ValueError(f"unknown dataset {config.dataset!r}; available: ['eegmmidb']")
-    return load_epochs(config.root, config.task, config.subjects if subjects is None else subjects,
+    data = load_epochs(config.root, config.task, config.subjects if subjects is None else subjects,
                        tmin=config.tmin, tmax=config.tmax, sfreq=config.sfreq, l_freq=config.l_freq,
                        h_freq=config.h_freq, include_rest=config.include_rest, channels=config.channels,
                        cache_dir=config.cache_dir, progress=progress)
+    if config.normalize == "euclidean":
+        # Per subject and label-free. Test subjects are aligned with their own unlabelled trials.
+        data.X = euclidean_alignment(data.X, data.subjects)
+    return data
 
 
 def build_model(config: ModelConfig, data: EpochsData) -> GRFNet:
@@ -77,15 +87,24 @@ def predict_proba(model: nn.Module, X: np.ndarray, *, scale: float = 1.0, batch_
 
 
 def run_experiment(config: ExperimentConfig, out_dir: str | Path, *, folds: list[int] | None = None,
-                   overwrite: bool = False, log=print, progress: bool | None = None) -> dict:
-    """Train and test the selected folds, writing everything to ``out_dir``. Returns the pooled results."""
+                   overwrite: bool = False, log=print, progress: bool | None = None,
+                   stop: Callable[[], bool] | None = None) -> dict:
+    """Train and test the selected folds, writing everything to ``out_dir``. Returns the pooled results.
+
+    Running the same config into the same folder resumes it: finished folds are read back, not retrained.
+    ``stop`` is checked between folds. Once it returns True, RunStopped is raised.
+    """
     bars = use_bars(progress)
     log = writer(log, bars)
     out = Path(out_dir)
+    resuming = False
     if out.exists() and any(out.iterdir()):
-        if not overwrite:
-            raise FileExistsError(f"{out} is not empty; pass overwrite=True (--overwrite) to replace it")
-        shutil.rmtree(out)
+        if overwrite:
+            shutil.rmtree(out)
+        elif (out / "config.toml").exists() and load_config(out / "config.toml") == config:
+            resuming = True
+        else:
+            raise FileExistsError(f"{out} holds a different run; pass overwrite=True (--overwrite) to replace it")
     out.mkdir(parents=True, exist_ok=True)
     (out / "config.toml").write_text(to_toml(config), encoding="utf-8")
     device = resolve_device(config.training.device)
@@ -101,6 +120,8 @@ def run_experiment(config: ExperimentConfig, out_dir: str | Path, *, folds: list
         all_folds = subject_kfold(subjects, config.split.n_folds, val_fraction=config.split.val_fraction,
                                   seed=config.seed)
     check_folds(all_folds)
+    if resuming and (out / "splits.json").exists() and load_splits(out / "splits.json") != all_folds:
+        raise ValueError(f"{out} was split differently, e.g. over other subjects; pass --overwrite to start again")
     save_splits(out / "splits.json", all_folds, scheme=config.split.scheme, seed=config.seed,
                 dataset=config.data.dataset, task=config.data.task)
     chosen = folds if folds is not None else config.split.folds
@@ -109,16 +130,33 @@ def run_experiment(config: ExperimentConfig, out_dir: str | Path, *, folds: list
         raise ValueError(f"no folds match {chosen}")
 
     results, predictions = [], []
-    for done, fold in enumerate(selected):
+    for fold in selected:
+        finished = _read_fold(out / f"fold_{fold['fold']}")
+        if finished is not None:
+            results.append(finished[0])
+            predictions.append(finished[1])
+    if results:
+        log(f"resuming: {len(results)}/{len(selected)} folds already completed")
+    for fold in selected:
+        if any(r["fold"] == fold["fold"] for r in results):
+            continue
+        if stop is not None and stop():
+            raise RunStopped(f"stopped: {len(results)}/{len(selected)} folds completed; "
+                             "run the same command again to resume")
+        done = len(results)
         log(f"fold {fold['fold']}: {len(fold['train'])} train, {len(fold['val'])} val, "
             f"{len(fold['test'])} test subjects")
         fold_result, fold_predictions = train_fold(config, data, fold, out / f"fold_{fold['fold']}", device, log,
-                                                   bars=bars, label=f"fold {fold['fold']} ({done}/{len(selected)} done)")
+                                                   bars=bars, label=f"fold {fold['fold']} ({done}/{len(selected)} done)",
+                                                   stop=stop)
         results.append(fold_result)
         predictions.append(fold_predictions)
         log(f"fold {fold['fold']}: best epoch {fold_result['best_epoch']} of {fold_result['epochs_run']}, "
             f"test balanced accuracy {fold_result['test']['balanced_accuracy']:.4f} "
             f"({done + 1}/{len(selected)} folds completed)")
+    order = {f["fold"]: i for i, f in enumerate(selected)}
+    paired = sorted(zip(results, predictions, strict=True), key=lambda rp: order[rp[0]["fold"]])
+    results, predictions = [r for r, _ in paired], [p for _, p in paired]
 
     summary = summarise(config, data, results, predictions)
     (out / "results.json").write_text(dumps_json(summary), encoding="utf-8")
@@ -129,7 +167,8 @@ def run_experiment(config: ExperimentConfig, out_dir: str | Path, *, folds: list
 
 
 def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path, device: torch.device,
-               log=print, *, bars: bool = False, label: str | None = None) -> tuple[dict, dict]:
+               log=print, *, bars: bool = False, label: str | None = None,
+               stop: Callable[[], bool] | None = None) -> tuple[dict, dict]:
     out.mkdir(parents=True, exist_ok=True)
     train_cfg = config.training
     seed_everything(config.seed + fold["fold"], train_cfg.deterministic)
@@ -154,9 +193,13 @@ def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path
     history: list[dict] = []
     best_key: tuple | None = None
     best_epoch, best_state, stale = 0, _state_copy(model), 0
-    epoch_bar = bar(total=train_cfg.epochs, enabled=bars, desc=label or f"fold {fold['fold']}", unit="epoch",
-                    leave=False)
+    desc = label or f"fold {fold['fold']}"
+    epoch_bar = bar(total=train_cfg.epochs, enabled=bars, desc=desc, unit="epoch", leave=False)
+    stopping = False
     for epoch in range(1, train_cfg.epochs + 1):
+        if not stopping and stop is not None and stop():
+            stopping = True
+            epoch_bar.set_description(f"{desc}, stopping after this fold")
         start = time.perf_counter()
         model.train()
         total, seen, correct = 0.0, 0, 0
@@ -227,9 +270,21 @@ def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path
                 if k in history[best_epoch - 1]},
         "test": classification_metrics(test.y, pred, n_classes),
     }
-    (out / "metrics.json").write_text(dumps_json(result), encoding="utf-8")
     write_predictions(out / "predictions.csv", test, probs)
+    # Written last: its presence marks the fold as finished for resuming.
+    (out / "metrics.json").write_text(dumps_json(result), encoding="utf-8")
     return result, {"subjects": test.subjects, "y": test.y, "pred": pred}
+
+
+def _read_fold(directory: Path) -> tuple[dict, dict] | None:
+    if not (directory / "metrics.json").exists() or not (directory / "predictions.csv").exists():
+        return None
+    result = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
+    with open(directory / "predictions.csv", newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    columns = {key: np.array([int(row[col]) for row in rows], dtype=np.int64)
+               for key, col in (("subjects", "subject"), ("y", "y_true"), ("pred", "y_pred"))}
+    return result, columns
 
 
 def summarise(config: ExperimentConfig, data: EpochsData, results: list[dict], predictions: list[dict]) -> dict:
