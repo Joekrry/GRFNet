@@ -27,11 +27,19 @@ Cross-subject classification of imagined left versus right fist movement on
 EEGMMIDB [2]: 109 subjects, 5 subject-disjoint folds, 0-4 s after the cue at
 160 Hz, one seed.
 
-| Model  | Trainable / frozen parameters | Balanced accuracy (pooled) | Per fold, mean (SD) | Per subject, mean (SD) | Cohen's kappa |
-| ------ | ----------------------------- | -------------------------- | ------------------- | ---------------------- | ------------- |
-| GRFNet | 3,365 / 1,152                 | 0.698                      | 0.699 (0.040)       | 0.700 (0.128)          | 0.395         |
+| Model                         | Trainable / frozen parameters | Balanced accuracy (pooled) | Per fold, mean (SD) | Per subject, mean (SD) | Cohen's kappa |
+| ----------------------------- | ----------------------------- | -------------------------- | ------------------- | ---------------------- | ------------- |
+| GRFNet                        | 3,365 / 1,152                 | 0.698                      | 0.699 (0.040)       | 0.700 (0.128)          | 0.395         |
+| GRFNet + Euclidean alignment  | 3,365 / 1,152                 | 0.742                      | 0.742 (0.035)       | 0.742 (0.123)          | 0.483         |
+| GRFNet, final (3 seeds)       | 3,365 / 1,152                 | 0.805 (SD 0.009)           | 0.805 (0.023)       | 0.805 (0.118)          | 0.611         |
 
-Chance is 0.50. Config: [`configs/grfnet_eegmmidb_imagery_lr.toml`](configs/grfnet_eegmmidb_imagery_lr.toml).
+Chance is 0.50. Config: [`configs/grfnet_eegmmidb_imagery_lr.toml`](configs/grfnet_eegmmidb_imagery_lr.toml);
+the second row adds `--set data.normalize=euclidean`, and the final row also
+`--set data.tmin=0.5` (a 0.5–4 s window) and reports the mean over seeds 0–2.
+The settings were chosen by validation score in one-setting ablations. Adding
+max pooling and dilations 1, 2, 4, 8 gives 0.808 (SD 0.003), no different, so
+the simpler configuration is kept. All ablations and the other EEGMMIDB tasks
+are in the [GRFNet README](src/grfnet/models/grfnet/README.md#ablations).
 See [Reproducing the results](#reproducing-the-results).
 
 ## Installation
