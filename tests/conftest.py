@@ -35,6 +35,13 @@ def requires_eegmmidb():
     )
 
 
+def requires_braindecode():
+    return pytest.mark.skipif(
+        importlib.util.find_spec("braindecode") is None,
+        reason="braindecode not installed",
+    )
+
+
 def requires_torch():
     return pytest.mark.skipif(
         importlib.util.find_spec("torch") is None,

@@ -19,6 +19,7 @@ All notable changes to this project are documented here. The format follows
 - Standard run names, `{model}_{dataset}_{task}[_rest][_{variant}]`, derived from the config. Dataset reports go to `runs/dataset_{dataset}_{task}` and config files are named after their run.
 - `data.normalize = "euclidean"`: per-subject Euclidean alignment (He and Wu, 2019), applied wherever runs load data, and `grfnet.data.euclidean_alignment`.
 - Stopping and resuming training: Ctrl+C finishes the current fold and exits with status 130, a second Ctrl+C aborts, and re-running the same command resumes from the finished folds.
+- EEGNet and ShallowConvNet baselines, wrapping braindecode, in the new `baselines` extra, with configs `eegnet_eegmmidb_imagery_lr.toml` and `shallowconvnet_eegmmidb_imagery_lr.toml`. They share GRFNet's checkpoint format, and `load_model` rebuilds any of the three from a checkpoint.
 - scikit-learn in the `viz` extra, for t-SNE. Without it, embeddings are projected with PCA.
 - `configs/grfnet_eegmmidb_imagery_lr.toml`: baseline with `dilations = [1, 2, 3, 5]` at 160 Hz.
 

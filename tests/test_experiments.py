@@ -335,7 +335,7 @@ def test_unknown_dataset_and_model_are_rejected():
     from grfnet.data import EpochsData
     from grfnet.experiments.runner import build_model, load_dataset
 
-    config = ExperimentConfig.from_dict({"data": {"dataset": "bci_iv_2a"}, "model": {"name": "EEGNet"}})
+    config = ExperimentConfig.from_dict({"data": {"dataset": "bci_iv_2a"}, "model": {"name": "DeepConvNet"}})
     data = EpochsData(np.zeros((2, 2, 64), np.float32), np.array([0, 1]), np.array([1, 1]), np.array([4, 4]),
                       ["C3", "C4"], 160.0, 0.0, ("left_fist", "right_fist"))
     with pytest.raises(ValueError, match="unknown dataset"):

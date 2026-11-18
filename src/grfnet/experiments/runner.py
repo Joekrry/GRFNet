@@ -21,9 +21,10 @@ from torch import nn
 from torch.amp.grad_scaler import GradScaler
 
 from .._progress import bar, use_bars, writer
+from ..checkpoint import save_checkpoint
 from ..data.alignment import euclidean_alignment
 from ..data.eegmmidb import EpochsData, load_epochs
-from ..models import GRFNet
+from ..models import MODELS, load_model
 from .config import DataConfig, ExperimentConfig, ModelConfig, load_config, to_toml
 from .metrics import classification_metrics, per_subject_scores
 from .splits import check_folds, load_splits, save_splits, subject_kfold
@@ -61,17 +62,19 @@ def load_dataset(config: DataConfig, subjects=None, *, progress: bool | None = F
     return data
 
 
-def build_model(config: ModelConfig, data: EpochsData) -> GRFNet:
-    models = {"GRFNet": GRFNet}
-    if config.name not in models:
-        raise ValueError(f"unknown model {config.name!r}; available: {sorted(models)}")
+def build_model(config: ModelConfig, data: EpochsData) -> nn.Module:
+    if config.name not in MODELS:
+        raise ValueError(f"unknown model {config.name!r}; available: {sorted(MODELS)}")
     kwargs = dict(config.kwargs)
-    if config.use_channel_names:
-        kwargs.setdefault("channel_names", list(data.ch_names))
-    # Explicit dilations replace sfreq-based scaling.
-    if "dilations" not in kwargs:
-        kwargs.setdefault("sfreq", data.sfreq)
-    return models[config.name](n_channels=len(data.ch_names), n_times=data.X.shape[-1], n_classes=data.n_classes,
+    if config.name == "GRFNet":
+        if config.use_channel_names:
+            kwargs.setdefault("channel_names", list(data.ch_names))
+        # Explicit dilations replace sfreq-based scaling.
+        if "dilations" not in kwargs:
+            kwargs.setdefault("sfreq", data.sfreq)
+    elif config.use_channel_names:
+        raise ValueError(f"model.use_channel_names applies to GRFNet only, not {config.name}")
+    return MODELS[config.name](n_channels=len(data.ch_names), n_times=data.X.shape[-1], n_classes=data.n_classes,
                                **kwargs)
 
 
@@ -255,7 +258,7 @@ def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path
         "subjects": {name: list(fold[name]) for name in ("train", "val", "test")},
         "seed": config.seed,
     }
-    model.cpu().save(out / "best.pt", metadata=metadata)
+    save_checkpoint(model.cpu(), out / "best.pt", metadata=metadata)
 
     test = parts["test"]
     probs = predict_proba(model, test.X, scale=scale, device=device)
@@ -324,7 +327,7 @@ def evaluate_checkpoint(path: str | Path, *, subjects=None, root: str | None = N
     data = load_dataset(data_cfg, meta["subjects"]["test"] if subjects is None else subjects)
     if data.ch_names != meta["ch_names"] or list(data.class_names) != meta["class_names"]:
         raise ValueError("the loaded data does not match the checkpoint's channels or classes")
-    model = GRFNet.load(path)
+    model = load_model(path)
     probs = predict_proba(model, data.X, scale=meta["scale"], device=resolve_device(device))
     pred = probs.argmax(1)
     result = {

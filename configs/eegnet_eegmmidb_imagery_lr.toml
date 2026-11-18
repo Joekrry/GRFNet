@@ -1,0 +1,35 @@
+# Baseline: EEGNet-8,2 (Lawhern et al., 2018) via braindecode, with its default hyperparameters,
+# trained under the same protocol as configs/grfnet_eegmmidb_imagery_lr.toml.
+# python -m grfnet.train configs/eegnet_eegmmidb_imagery_lr.toml   (needs the baselines extra)
+# Runs are named {model}_{dataset}_{task}: this one writes to runs/eegnet_eegmmidb_imagery_lr.
+
+seed = 0
+
+[data]
+dataset = "eegmmidb"
+task = "imagery_lr"
+# All 109 subjects. Set root here or with GRFNET_EEGMMIDB.
+tmin = 0.0
+tmax = 4.0
+sfreq = 160.0
+cache_dir = "runs/cache"
+normalize = "global"
+
+[split]
+scheme = "kfold"
+n_folds = 5
+val_fraction = 0.1
+
+[model]
+name = "EEGNet"
+
+[training]
+epochs = 100
+batch_size = 64
+lr = 0.001
+weight_decay = 0.0001
+scheduler = "cosine"
+patience = 20
+device = "auto"
+amp = false
+deterministic = false

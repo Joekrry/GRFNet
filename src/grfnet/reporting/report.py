@@ -14,7 +14,7 @@ from .._progress import bar, use_bars, writer
 from ..checkpoint import load_checkpoint
 from ..experiments.config import ExperimentConfig, load_config
 from ..experiments.runner import dumps_json, load_dataset, predict_proba, resolve_device
-from ..models import GRFNet
+from ..models import GRFNet, load_model
 from . import analysis, benchmark, figures
 
 
@@ -92,18 +92,22 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
 
     models, metas = {}, {}
     for k, path in sorted(run.checkpoints.items()):
-        models[k] = GRFNet.load(path)
+        models[k] = load_model(path)
         metas[k] = load_checkpoint(path)["metadata"]
     model, meta = models[chosen], metas[chosen]
     sfreq = float(meta["data"]["sfreq"])
-    emit("stream_gates.png", figures.gate_weights({k: figures.gates_of(m) for k, m in models.items()},
-                                                  list(model.statistics)),
-         "Softmax weight of each pooling statistic in every fold's model.")
-    emit("spatial_filters.png", figures.topomap_grid(figures.spatial_weights(model), meta["ch_names"], sfreq,
-                                                     f"Spatial filter weights, fold {chosen} (each map scaled to its own maximum)"),
-         f"Spatial filter weights of fold {chosen}'s model. Weights show how channels are combined, not where the signal comes from.")
-    emit("kernel_responses.png", figures.kernel_responses(model, sfreq),
-         f"Frequency responses of fold {chosen}'s frozen and learnable bank kernels at each dilation.")
+    if isinstance(model, GRFNet):
+        emit("stream_gates.png", figures.gate_weights({k: figures.gates_of(m) for k, m in models.items()},
+                                                      list(model.statistics)),
+             "Softmax weight of each pooling statistic in every fold's model.")
+        emit("spatial_filters.png", figures.topomap_grid(figures.spatial_weights(model), meta["ch_names"], sfreq,
+                                                         f"Spatial filter weights, fold {chosen} (each map scaled to its own maximum)"),
+             f"Spatial filter weights of fold {chosen}'s model. Weights show how channels are combined, not where the signal comes from.")
+        emit("kernel_responses.png", figures.kernel_responses(model, sfreq),
+             f"Frequency responses of fold {chosen}'s frozen and learnable bank kernels at each dilation.")
+    else:
+        skipped["GRFNet figures"] = (f"{type(model).__name__} has no stream gates, spatial front end, kernel bank "
+                                     "or embedding")
 
     analyses: dict = {}
     if data:
@@ -125,9 +129,9 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
     efficiency = None
     if bench:
         log("benchmarking")
-        efficiency = benchmark.benchmark_model(model, len(meta["ch_names"]), int(model.n_times or round(
-            (meta["data"]["tmax"] - meta["data"]["tmin"]) * sfreq)), checkpoint=run.checkpoints[chosen],
-            histories=run.histories)
+        n_times = getattr(model, "n_times", None) or round((meta["data"]["tmax"] - meta["data"]["tmin"]) * sfreq)
+        efficiency = benchmark.benchmark_model(model, len(meta["ch_names"]), int(n_times),
+                                               checkpoint=run.checkpoints[chosen], histories=run.histories)
         (out / "efficiency.json").write_text(dumps_json(efficiency), encoding="utf-8")
     else:
         skipped["benchmark"] = "disabled (--no-benchmark)"
@@ -143,19 +147,21 @@ def _data_analyses(model, meta, test, out, emit, fold, max_trials, dpi, device, 
     scale = float(meta["scale"])
     dev = resolve_device(device)
     X = test.X
-    patterns = figures.spatial_patterns(figures.spatial_weights(model), X / scale)
-    emit("spatial_patterns.png", figures.topomap_grid(patterns, test.ch_names, test.sfreq,
-                                                      f"Spatial activation patterns, fold {fold} (each map scaled to its own maximum)"),
-         f"Activation patterns of fold {fold}'s spatial filters, estimated from its test data (Haufe et al. 2014). "
-         "Patterns show which channels each component responds to.")
-
     rng = np.random.default_rng(seed)
     index = np.sort(rng.choice(len(X), size=min(max_trials, len(X)), replace=False))
-    probs = predict_proba(model, X[index], scale=scale, device=dev)
-    pred = probs.argmax(1)
-    points, method = analysis.project_2d(analysis.embeddings(model, X[index], scale=scale, device=dev), seed=seed)
-    emit("embeddings.png", analysis.embedding_figure(points, method, test.y[index], pred, test.class_names),
-         f"{method} projection of fold {fold}'s embedding for {len(index)} test trials.")
+    method = None
+    if isinstance(model, GRFNet):
+        patterns = figures.spatial_patterns(figures.spatial_weights(model), X / scale)
+        emit("spatial_patterns.png", figures.topomap_grid(patterns, test.ch_names, test.sfreq,
+                                                          f"Spatial activation patterns, fold {fold} (each map scaled to its own maximum)"),
+             f"Activation patterns of fold {fold}'s spatial filters, estimated from its test data (Haufe et al. 2014). "
+             "Patterns show which channels each component responds to.")
+        probs = predict_proba(model, X[index], scale=scale, device=dev)
+        pred = probs.argmax(1)
+        points, method = analysis.project_2d(analysis.embeddings(model, X[index], scale=scale, device=dev),
+                                             seed=seed)
+        emit("embeddings.png", analysis.embedding_figure(points, method, test.y[index], pred, test.class_names),
+             f"{method} projection of fold {fold}'s embedding for {len(index)} test trials.")
 
     values = analysis.saliency(model, X[index], test.y[index], scale=scale, device=dev)
     emit("saliency.png", analysis.saliency_figure(values, test.y[index], test.class_names, test.ch_names,

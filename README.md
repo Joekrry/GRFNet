@@ -58,6 +58,7 @@ Python 3.11+ and PyTorch 2.2+. The core package needs only PyTorch and NumPy.
 | `viz`  | Matplotlib, scikit-learn       | Dataset and run reports                          |
 | `eval` | SciPy                          | Wilcoxon tests between runs                      |
 | `onnx` | onnx, onnxscript, ONNX Runtime | ONNX export                                      |
+| `baselines` | braindecode               | EEGNet and ShallowConvNet baselines (PyTorch 2.6+) |
 | `dev`  | pytest, Ruff                   | Tests and linting                                |
 
 ## Quick start
@@ -97,6 +98,13 @@ stream gates, embeddings, saliency and an efficiency benchmark. Details:
 | Model                                        | Mechanism                                                         | Output                  |
 | -------------------------------------------- | ----------------------------------------------------------------- | ----------------------- |
 | [GRFNet](src/grfnet/models/grfnet/README.md) | Spatial filters, frozen and learnable dilated kernels, gated pooling | One vector per sequence |
+| [EEGNet](src/grfnet/models/eegnet/README.md) | Baseline: temporal, depthwise spatial and separable convolutions (braindecode) | Class scores |
+| [ShallowConvNet](src/grfnet/models/shallowconvnet/README.md) | Baseline: temporal and spatial convolution, log band power (braindecode) | Class scores |
+
+The baselines train, checkpoint and report through the same pipeline, with
+configs `configs/eegnet_eegmmidb_imagery_lr.toml` and
+`configs/shallowconvnet_eegmmidb_imagery_lr.toml`. `load_model` rebuilds any of
+the three from a checkpoint.
 
 ## Deployment
 
@@ -121,6 +129,7 @@ GRFNet also supports `torch.export` with dynamic batch and length,
 configs/              experiment configs
 src/grfnet/
   models/grfnet/      GRFNet model
+  models/eegnet/, models/shallowconvnet/   baselines (braindecode wrappers)
   layers.py           spatial front-end, kernel bank, dilation scaling
   data/               EEGMMIDB loader and dataset report
   experiments/        configs, splits, metrics, training runner

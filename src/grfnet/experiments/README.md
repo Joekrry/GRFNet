@@ -92,10 +92,10 @@ val_fraction = 0.1
 # folds = [0]
 
 [model]
-name = "GRFNet"
-use_channel_names = false   # true seeds spatial filters from the data's channel names
+name = "GRFNet"             # or "EEGNet", "ShallowConvNet" (baselines extra)
+use_channel_names = false   # GRFNet only: true seeds spatial filters from the channel names
 
-[model.kwargs]              # any GRFNet argument, e.g. dilations = [1, 2, 3, 5]
+[model.kwargs]              # any argument of the model, e.g. dilations = [1, 2, 3, 5]
 
 [training]
 epochs = 100
@@ -139,7 +139,10 @@ runs/<run name>/
 | `embeddings.png`       | t-SNE of the embedding (PCA without scikit-learn), by class and by correctness. \*                         |
 | `saliency.png`         | Mean \|gradient x input\| per channel and over time. \*                                                    |
 
-Model figures use the lowest fold's checkpoint unless `--fold` is given. Figures
+Model figures use the lowest fold's checkpoint unless `--fold` is given. For
+EEGNet and ShallowConvNet runs, the stream gates, spatial filters and patterns,
+kernel responses and embeddings are skipped with a note, as they read GRFNet's
+internals. Figures
 marked \* read that fold's test data and are skipped, with a note, if the dataset
 is missing. Timings depend on the machine.
 
