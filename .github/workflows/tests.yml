@@ -28,7 +28,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      # CPU-only PyTorch avoids downloading the CUDA libraries.
-      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      # CPU-only PyTorch/torchaudio avoids downloading the CUDA libraries and
+      # keeps torchaudio's compiled extension built against the same torch ABI.
+      - run: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -e ".[dev,eeg,onnx,viz,eval,baselines]"
       - run: python -m pytest
