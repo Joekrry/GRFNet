@@ -4,6 +4,7 @@ from torch import nn
 
 from ..checkpoint import load_checkpoint
 from .eegnet import EEGNet
+from .fastgrfnet import FastGRFNet
 from .grfnet import GRFNet
 from .shallowconvnet import ShallowConvNet
 
@@ -19,4 +20,4 @@ def load_model(path, *, map_location="cpu") -> nn.Module:
     return MODELS[name].load(path, map_location=map_location)  # pyright: ignore[reportAttributeAccessIssue]
 
 
-__all__ = ["EEGNet", "GRFNet", "MODELS", "ShallowConvNet", "load_model"]
+__all__ = ["EEGNet", "FastGRFNet", "GRFNet", "MODELS", "ShallowConvNet", "load_model"]
