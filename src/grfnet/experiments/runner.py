@@ -24,7 +24,8 @@ from .._progress import bar, use_bars, writer
 from ..checkpoint import save_checkpoint
 from ..data.alignment import euclidean_alignment
 from ..data.eegmmidb import EpochsData, load_epochs
-from ..models import MODELS, load_model
+from ..models import MODELS, GRFNet, load_model
+from . import episodes
 from .config import DataConfig, ExperimentConfig, ModelConfig, load_config, to_toml
 from .metrics import classification_metrics, per_subject_scores
 from .splits import check_folds, load_splits, save_splits, subject_kfold
@@ -66,14 +67,14 @@ def build_model(config: ModelConfig, data: EpochsData) -> nn.Module:
     if config.name not in MODELS:
         raise ValueError(f"unknown model {config.name!r}; available: {sorted(MODELS)}")
     kwargs = dict(config.kwargs)
-    if config.name == "GRFNet":
+    if issubclass(MODELS[config.name], GRFNet):
         if config.use_channel_names:
             kwargs.setdefault("channel_names", list(data.ch_names))
         # Explicit dilations replace sfreq-based scaling.
         if "dilations" not in kwargs:
             kwargs.setdefault("sfreq", data.sfreq)
     elif config.use_channel_names:
-        raise ValueError(f"model.use_channel_names applies to GRFNet only, not {config.name}")
+        raise ValueError(f"model.use_channel_names applies only to GRFNet and FastGRFNet, not {config.name}")
     return MODELS[config.name](n_channels=len(data.ch_names), n_times=data.X.shape[-1], n_classes=data.n_classes,
                                **kwargs)
 
@@ -85,8 +86,22 @@ def predict_proba(model: nn.Module, X: np.ndarray, *, scale: float = 1.0, batch_
     out = []
     for i in range(0, len(X), batch_size):
         batch = torch.from_numpy(X[i:i + batch_size] / scale).float().to(device)
-        out.append(torch.softmax(model(batch).float(), dim=1).cpu().numpy())
+        out.append(torch.softmax(trial_logits(model(batch)).float(), dim=1).cpu().numpy())
     return np.concatenate(out) if out else np.zeros((0, 0), np.float32)
+
+
+def trial_logits(out) -> torch.Tensor:
+    # Stateful models return (logits, state); a single call starts from a zero state.
+    return out[0] if isinstance(out, tuple) else out
+
+
+def predict_trials(model: nn.Module, data: EpochsData, *, scale: float = 1.0,
+                   device: torch.device | str = "cpu") -> np.ndarray:
+    """Class probabilities; stateful models stream each subject's trials in order."""
+    if hasattr(model, "init_state"):
+        return episodes.predict_sequences(model, data.X, data.y, data.subjects, data.runs, scale=scale,
+                                          device=device)
+    return predict_proba(model, data.X, scale=scale, device=device)
 
 
 def run_experiment(config: ExperimentConfig, out_dir: str | Path, *, folds: list[int] | None = None,
@@ -190,6 +205,8 @@ def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path
     scaler = GradScaler("cuda", enabled=amp)
     X_train = torch.from_numpy(parts["train"].X / scale).float()
     y_train = torch.from_numpy(parts["train"].y)
+    episodic = train_cfg.mode == "episodic"
+    sequences = episodes.subject_sequences(parts["train"].subjects, parts["train"].runs) if episodic else {}
     generator = torch.Generator().manual_seed(config.seed + fold["fold"])
     n_classes = data.n_classes
 
@@ -204,26 +221,20 @@ def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path
             stopping = True
             epoch_bar.set_description(f"{desc}, stopping after this fold")
         start = time.perf_counter()
-        model.train()
-        total, seen, correct = 0.0, 0, 0
-        for batch in torch.randperm(len(X_train), generator=generator).split(train_cfg.batch_size):
-            xb, yb = X_train[batch].to(device), y_train[batch].to(device)
-            optimiser.zero_grad(set_to_none=True)
-            with torch.autocast(device.type, enabled=amp):
-                logits = model(xb)
-                loss = nn.functional.cross_entropy(logits.float(), yb)
-            scaler.scale(loss).backward()
-            scaler.step(optimiser)
-            scaler.update()
-            total += loss.item() * len(batch)
-            seen += len(batch)
-            correct += int((logits.argmax(1) == yb).sum())
+        if episodic:
+            total, seen, correct = episodes.train_epoch(
+                model, X_train, y_train, sequences, optimiser, chunk_length=train_cfg.chunk_length,
+                subjects_per_batch=train_cfg.subjects_per_batch, generator=generator, device=device)
+        else:
+            total, seen, correct = _train_batches(model, X_train, y_train, optimiser, scaler, amp=amp,
+                                                  batch_size=train_cfg.batch_size, generator=generator,
+                                                  device=device)
         lr = optimiser.param_groups[0]["lr"]
         if scheduler is not None:
             scheduler.step()
         row = {"epoch": epoch, "lr": lr, "train_loss": total / seen, "train_accuracy": correct / seen}
         if len(parts["val"]):
-            probs = predict_proba(model, parts["val"].X, scale=scale, device=device)
+            probs = predict_trials(model, parts["val"], scale=scale, device=device)
             row["val_loss"] = _nll(probs, parts["val"].y)
             row["val_balanced_accuracy"] = classification_metrics(
                 parts["val"].y, probs.argmax(1), n_classes)["balanced_accuracy"]
@@ -261,7 +272,7 @@ def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path
     save_checkpoint(model.cpu(), out / "best.pt", metadata=metadata)
 
     test = parts["test"]
-    probs = predict_proba(model, test.X, scale=scale, device=device)
+    probs = predict_trials(model, test, scale=scale, device=device)
     pred = probs.argmax(1)
     result = {
         "fold": fold["fold"],
@@ -277,6 +288,27 @@ def train_fold(config: ExperimentConfig, data: EpochsData, fold: dict, out: Path
     # Written last: its presence marks the fold as finished for resuming.
     (out / "metrics.json").write_text(dumps_json(result), encoding="utf-8")
     return result, {"subjects": test.subjects, "y": test.y, "pred": pred}
+
+
+def _train_batches(model: nn.Module, X: torch.Tensor, y: torch.Tensor, optimiser: torch.optim.Optimizer,
+                   scaler: GradScaler, *, amp: bool, batch_size: int, generator: torch.Generator,
+                   device: torch.device) -> tuple[float, int, int]:
+    # One epoch of shuffled mini-batches. Returns the summed loss, trials seen and trials correct.
+    model.train()
+    total, seen, correct = 0.0, 0, 0
+    for batch in torch.randperm(len(X), generator=generator).split(batch_size):
+        xb, yb = X[batch].to(device), y[batch].to(device)
+        optimiser.zero_grad(set_to_none=True)
+        with torch.autocast(device.type, enabled=amp):
+            logits = model(xb)
+            loss = nn.functional.cross_entropy(logits.float(), yb)
+        scaler.scale(loss).backward()
+        scaler.step(optimiser)
+        scaler.update()
+        total += loss.item() * len(batch)
+        seen += len(batch)
+        correct += int((logits.argmax(1) == yb).sum())
+    return total, seen, correct
 
 
 def _read_fold(directory: Path) -> tuple[dict, dict] | None:
@@ -328,7 +360,7 @@ def evaluate_checkpoint(path: str | Path, *, subjects=None, root: str | None = N
     if data.ch_names != meta["ch_names"] or list(data.class_names) != meta["class_names"]:
         raise ValueError("the loaded data does not match the checkpoint's channels or classes")
     model = load_model(path)
-    probs = predict_proba(model, data.X, scale=meta["scale"], device=resolve_device(device))
+    probs = predict_trials(model, data, scale=meta["scale"], device=resolve_device(device))
     pred = probs.argmax(1)
     result = {
         "checkpoint": str(path),
@@ -365,9 +397,12 @@ def compare_runs(run_a: str | Path, run_b: str | Path, metric: str = "balanced_a
 def write_predictions(path: Path, data: EpochsData, probs: np.ndarray) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["subject", "run", "y_true", "y_pred", *[f"p_{name}" for name in data.class_names]])
-        for subject, run, y, p in zip(data.subjects, data.runs, data.y, probs, strict=True):
-            writer.writerow([int(subject), int(run), int(y), int(p.argmax()), *[f"{v:.6f}" for v in p]])
+        writer.writerow(["subject", "run", "position", "y_true", "y_pred",
+                         *[f"p_{name}" for name in data.class_names]])
+        positions = episodes.trial_positions(data.subjects, data.runs)
+        for subject, run, position, y, p in zip(data.subjects, data.runs, positions, data.y, probs, strict=True):
+            writer.writerow([int(subject), int(run), int(position), int(y), int(p.argmax()),
+                             *[f"{v:.6f}" for v in p]])
 
 
 def environment(device: torch.device) -> dict:

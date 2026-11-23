@@ -56,6 +56,23 @@ Each batch element is a separate sequence with its own state. Checkpoints use
 GRF-Net's format (`model.save`, `FastGRFNet.load`). TorchScript is not
 supported, because the model is stateful.
 
+## Training
+
+The writer learns only from sequences of trials. Experiments train FastGRFNet
+with episodic meta-training (`training.mode = "episodic"`): each training
+subject's trials in recording order from a zero state, several subjects in
+parallel, with back-propagation through the writes over chunks of
+`chunk_length` trials. Validation and test subjects are streamed the same way.
+See the [experiments README](../../experiments/README.md#protocol) and
+[`configs/fastgrfnet_eegmmidb_imagery_lr.toml`](../../../../configs/fastgrfnet_eegmmidb_imagery_lr.toml).
+
+```bash
+python -m grfnet.train configs/fastgrfnet_eegmmidb_imagery_lr.toml
+python -m grfnet.train configs/fastgrfnet_eegmmidb_imagery_lr.toml --set model.kwargs.write_mode=label_feedback --set variant=label_feedback
+```
+
+The run report's `adaptation.png` shows test accuracy by trial position.
+
 ## Configuration
 
 All arguments of [GRFNet](../grfnet/README.md#configuration), plus:
@@ -74,8 +91,8 @@ on top of GRF-Net's 3,365.
 
 ## Limitations
 
-- Fast weights only help if the writer is trained on sequences of trials.
-  Trained one trial at a time, the writer receives no gradient.
+- Fast weights only help if the writer is trained on sequences of trials,
+  which is why FastGRFNet trains only in episodic mode.
 - EEGMMIDB has about 45 left/right imagery trials per subject, so each
   adaptation sequence is short.
 

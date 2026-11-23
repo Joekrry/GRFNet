@@ -65,6 +65,15 @@ class TrainingConfig:
     device: str = "auto"
     amp: bool = False
     deterministic: bool = False
+    # "standard": shuffled mini-batches of trials. "episodic": each subject's trials in recording order,
+    # subjects_per_batch sequences in parallel, back-propagating through chunk_length trials at a time.
+    mode: str = "standard"
+    chunk_length: int = 8
+    subjects_per_batch: int = 8
+
+
+# Models that carry a state across trials and train only in episodic mode.
+STATEFUL_MODELS = ("FastGRFNet",)
 
 
 @dataclass
@@ -113,6 +122,18 @@ class ExperimentConfig:
             raise ValueError(f"training.scheduler must be 'cosine' or 'none'; got {self.training.scheduler!r}")
         if self.training.epochs < 1 or self.training.batch_size < 1:
             raise ValueError("training.epochs and training.batch_size must be positive")
+        if self.training.mode not in ("standard", "episodic"):
+            raise ValueError(f"training.mode must be 'standard' or 'episodic'; got {self.training.mode!r}")
+        if self.training.chunk_length < 1 or self.training.subjects_per_batch < 1:
+            raise ValueError("training.chunk_length and training.subjects_per_batch must be positive")
+        stateful = self.model.name in STATEFUL_MODELS
+        if stateful and self.training.mode != "episodic":
+            raise ValueError(f"{self.model.name} trains only with training.mode = 'episodic'")
+        if self.training.mode == "episodic" and not stateful:
+            raise ValueError(f"training.mode = 'episodic' needs a stateful model {STATEFUL_MODELS}; "
+                             f"got {self.model.name}")
+        if self.training.mode == "episodic" and self.training.amp:
+            raise ValueError("training.amp is not supported with training.mode = 'episodic'")
         return self
 
 

@@ -134,7 +134,7 @@ src/grfnet/
   models/eegnet/, models/shallowconvnet/   baselines (braindecode wrappers)
   layers.py           spatial front-end, kernel bank, dilation scaling
   data/               EEGMMIDB loader and dataset report
-  experiments/        configs, splits, metrics, training runner
+  experiments/        configs, splits, metrics, training runner, episodic training
   reporting/          run reports and efficiency benchmark
   train.py, evaluate.py, report.py   command-line entry points
 tests/                unit tests and reference outputs

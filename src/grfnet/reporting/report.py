@@ -12,6 +12,7 @@ import numpy as np
 from .._plotting import save
 from .._progress import bar, use_bars, writer
 from ..checkpoint import load_checkpoint
+from ..experiments import episodes
 from ..experiments.config import ExperimentConfig, load_config
 from ..experiments.runner import dumps_json, load_dataset, predict_proba, resolve_device
 from ..models import GRFNet, load_model
@@ -72,7 +73,7 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
         raise ValueError(f"fold {chosen} has no checkpoint in {run.path}; available: {sorted(run.checkpoints)}")
     figure_notes: dict[str, str] = {}
     skipped: dict[str, str] = {}
-    steps = bar(total=8, enabled=bars, desc="report", unit="step", leave=False)
+    steps = bar(total=10, enabled=bars, desc="report", unit="step", leave=False)
 
     def emit(name: str, fig, caption: str) -> None:
         save(fig, out / name, dpi)
@@ -89,6 +90,13 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
     emit("subject_scores.png", figures.subject_scores(results["per_subject"], subject_fold, fold_scores,
                                                       len(class_names)),
          "Test balanced accuracy for every subject, coloured by the fold that tested it, and for each fold.")
+    trials = read_predictions(run.path, folds)
+    adaptation = None
+    if trials is not None:
+        emit("adaptation.png", figures.adaptation(trials["position"], trials["correct"], 1.0 / len(class_names)),
+             "Test accuracy at each trial position within the subjects' recording order, over all folds. "
+             "Stateful models carry their state along this order; others predict each trial independently.")
+        adaptation = adaptation_summary(trials)
 
     models, metas = {}, {}
     for k, path in sorted(run.checkpoints.items()):
@@ -137,10 +145,42 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
         skipped["benchmark"] = "disabled (--no-benchmark)"
 
     summary = _summary(run, chosen, models[chosen], analyses, efficiency, figure_notes, skipped)
+    summary["adaptation"] = adaptation
     (out / "report.json").write_text(dumps_json(summary), encoding="utf-8")
     (out / "report.md").write_text(_markdown(summary, figure_notes), encoding="utf-8")
     log(f"report written to {out}")
     return summary
+
+
+def read_predictions(run_dir: Path, folds: list[int]) -> dict[str, np.ndarray] | None:
+    """Subject, trial position and correctness of every test trial, from each fold's predictions.csv."""
+    subjects, runs, positions, correct = [], [], [], []
+    for k in folds:
+        path = run_dir / f"fold_{k}" / "predictions.csv"
+        if not path.exists():
+            return None
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        fold_subjects = np.array([int(r["subject"]) for r in rows], dtype=np.int64)
+        fold_runs = np.array([int(r["run"]) for r in rows], dtype=np.int64)
+        if rows and "position" in rows[0]:
+            positions.append(np.array([int(r["position"]) for r in rows], dtype=np.int64))
+        else:  # written before positions were recorded
+            positions.append(episodes.trial_positions(fold_subjects, fold_runs))
+        subjects.append(fold_subjects)
+        runs.append(fold_runs)
+        correct.append(np.array([r["y_true"] == r["y_pred"] for r in rows], dtype=bool))
+    return {"subject": np.concatenate(subjects), "run": np.concatenate(runs), "position": np.concatenate(positions),
+            "correct": np.concatenate(correct)}
+
+
+def adaptation_summary(trials: dict[str, np.ndarray]) -> dict:
+    """Test accuracy over the first and second half of each subject's sequence."""
+    length = {s: int((trials["subject"] == s).sum()) for s in np.unique(trials["subject"])}
+    first = np.array([p < length[int(s)] / 2 for s, p in zip(trials["subject"], trials["position"], strict=True)])
+    return {"first_half_accuracy": float(trials["correct"][first].mean()),
+            "second_half_accuracy": float(trials["correct"][~first].mean()),
+            "n_trials": int(len(first))}
 
 
 def _data_analyses(model, meta, test, out, emit, fold, max_trials, dpi, device, seed) -> dict:
@@ -273,6 +313,10 @@ def _markdown(summary: dict, figure_notes: dict[str, str]) -> str:
     for name, caption in figure_notes.items():
         lines += [f"### {name.removesuffix('.png').replace('_', ' ').capitalize()}", "", caption, "",
                   f"![{caption}]({name})", ""]
+    if summary.get("adaptation"):
+        a = summary["adaptation"]
+        lines += [f"Test accuracy over the first half of each subject's trials: {a['first_half_accuracy']:.4f}; "
+                  f"over the second half: {a['second_half_accuracy']:.4f}.", ""]
     if summary["analyses"].get("top_saliency_channels"):
         lines += [f"Channels with the highest mean saliency: {', '.join(summary['analyses']['top_saliency_channels'])}.",
                   ""]

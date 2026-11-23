@@ -9,7 +9,8 @@ from .grfnet import GRFNet
 from .shallowconvnet import ShallowConvNet
 
 # Names used in experiment configs and stored in checkpoints.
-MODELS: dict[str, type[nn.Module]] = {"GRFNet": GRFNet, "EEGNet": EEGNet, "ShallowConvNet": ShallowConvNet}
+MODELS: dict[str, type[nn.Module]] = {"GRFNet": GRFNet, "FastGRFNet": FastGRFNet, "EEGNet": EEGNet,
+                                     "ShallowConvNet": ShallowConvNet}
 
 
 def load_model(path, *, map_location="cpu") -> nn.Module:

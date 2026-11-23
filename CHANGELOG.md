@@ -21,6 +21,8 @@ All notable changes to this project are documented here. The format follows
 - Stopping and resuming training: Ctrl+C finishes the current fold and exits with status 130, a second Ctrl+C aborts, and re-running the same command resumes from the finished folds.
 - EEGNet and ShallowConvNet baselines, wrapping braindecode, in the new `baselines` extra, with configs `eegnet_eegmmidb_imagery_lr.toml` and `shallowconvnet_eegmmidb_imagery_lr.toml`. They share GRFNet's checkpoint format, and `load_model` rebuilds any of the three from a checkpoint.
 - `FastGRFNet`: GRF-Net with fast-weight spatial filters, updated after each trial by a delta rule from a writer network, with write modes `off`, `unsupervised` and `label_feedback`. A zero state reproduces GRFNet exactly.
+- Episodic meta-training (`training.mode = "episodic"`, with `chunk_length` and `subjects_per_batch`) for stateful models: each subject's trials in recording order from a zero state, truncated back-propagation through the state. Stateful models are validated and tested on streamed sequences, with labels after prediction for `label_feedback`. Adds `configs/fastgrfnet_eegmmidb_imagery_lr.toml` and `grfnet.experiments.episodes`.
+- Run reports add `adaptation.png`, test accuracy by trial position, with first- and second-half accuracy; `predictions.csv` records each trial's position.
 - scikit-learn in the `viz` extra, for t-SNE. Without it, embeddings are projected with PCA.
 - `configs/grfnet_eegmmidb_imagery_lr.toml`: baseline with `dilations = [1, 2, 3, 5]` at 160 Hz.
 

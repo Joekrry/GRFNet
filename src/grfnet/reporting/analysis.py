@@ -61,7 +61,10 @@ def saliency(model, X: np.ndarray, y: np.ndarray, *, scale: float = 1.0, batch_s
     for i in range(0, len(X), batch_size):
         x = torch.from_numpy(X[i:i + batch_size] / scale).float().to(device).requires_grad_(True)
         target = torch.from_numpy(y[i:i + batch_size]).long().to(device)
-        scores = model(x).gather(1, target[:, None]).sum()
+        logits = model(x)
+        # Stateful models return (logits, state); one call is a zero-state prediction.
+        logits = logits[0] if isinstance(logits, tuple) else logits
+        scores = logits.gather(1, target[:, None]).sum()
         (grad,) = torch.autograd.grad(scores, x)
         out.append((grad * x).abs().detach().cpu().numpy())
     return np.concatenate(out) if out else np.zeros_like(X)

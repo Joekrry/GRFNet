@@ -61,6 +61,34 @@ def confusion_matrix(matrix: Sequence[Sequence[int]], class_names: Sequence[str]
     return fig
 
 
+def adaptation_curve(positions: np.ndarray, correct: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Accuracy over test subjects at each trial position, and the number of subjects at each position."""
+    order = np.arange(int(positions.max()) + 1) if len(positions) else np.zeros(0, np.int64)
+    counts = np.bincount(positions, minlength=len(order))
+    hits = np.bincount(positions, weights=correct.astype(np.float64), minlength=len(order))
+    return order, hits / np.maximum(counts, 1), counts
+
+
+def adaptation(positions: np.ndarray, correct: np.ndarray, chance: float, *, window: int = 5):
+    order, accuracy, counts = adaptation_curve(positions, correct)
+    fig, axes = figure(2, 1, width=8.0, height=5.0, sharex=True, gridspec_kw={"height_ratios": [3, 1]})
+    ax = axes[0, 0]
+    ax.plot(order, accuracy, "o", color=SERIES[0], alpha=0.35, markersize=3, label="per position")
+    if len(order) >= window:
+        smooth = np.convolve(accuracy, np.ones(window) / window, mode="valid")
+        ax.plot(order[window - 1:], smooth, color=SERIES[0], linewidth=1.8,
+                label=f"mean of the last {window} positions")
+    ax.axhline(chance, color=MUTED, linewidth=0.8, linestyle="--", label=f"chance {chance:.2f}")
+    ax.set_ylim(0.0, 1.0)
+    label(ax, None, "Test accuracy")
+    title(ax, "Accuracy by trial position within each subject's sequence")
+    legend(ax, loc="lower right")
+    side = axes[1, 0]
+    side.bar(order, counts, width=0.8, color=NEUTRAL)
+    label(side, "Trial position (0 = first trial)", "Subjects")
+    return fig
+
+
 def subject_scores(per_subject: Mapping[str, dict], subject_fold: Mapping[int, int], fold_scores: Mapping[int, float],
                    n_classes: int):
     subjects = sorted(per_subject, key=lambda s: per_subject[s]["balanced_accuracy"])

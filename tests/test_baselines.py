@@ -99,7 +99,7 @@ def test_channel_names_are_grfnet_only(monkeypatch, tmp_path):
     config.model.name = "EEGNet"
     config.model.kwargs = {}
     config.model.use_channel_names = True
-    with pytest.raises(ValueError, match="GRFNet only"):
+    with pytest.raises(ValueError, match="only to GRFNet"):
         run_experiment(config, tmp_path / "run", folds=[0], log=lambda *_: None)
 
 
@@ -130,6 +130,6 @@ def test_report_skips_grfnet_figures_for_baselines(monkeypatch, tmp_path):
     run_experiment(config, tmp_path / "run", folds=[0], log=lambda *_: None)
     summary = write_run_report(tmp_path / "run", tmp_path / "report", progress=False, log=lambda *_: None)
     assert set(summary["figures"]) == {"learning_curves.png", "confusion_matrix.png", "subject_scores.png",
-                                       "saliency.png"}
+                                       "adaptation.png", "saliency.png"}
     assert "GRFNet figures" in summary["skipped"]
     assert summary["efficiency"]["flops_per_trial"] > 0

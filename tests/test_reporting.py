@@ -8,7 +8,7 @@ import pytest
 
 from conftest import fake_eegmmidb, requires_matplotlib, requires_mne, requires_torch, tiny_config
 
-ALL_FIGURES = {"learning_curves.png", "confusion_matrix.png", "subject_scores.png", "stream_gates.png",
+ALL_FIGURES = {"learning_curves.png", "confusion_matrix.png", "subject_scores.png", "adaptation.png", "stream_gates.png",
                "spatial_filters.png", "kernel_responses.png", "spatial_patterns.png", "embeddings.png",
                "saliency.png"}
 DATA_FIGURES = {"spatial_patterns.png", "embeddings.png", "saliency.png"}

@@ -61,6 +61,14 @@ the whole run name and `--out` the folder; both should be the exception.
   trials, which assumes those trials are all available (offline evaluation).
 - **Training.** AdamW, cross-entropy and cosine decay. Frozen kernels are not
   optimised.
+- **Episodic training** (`training.mode = "episodic"`, stateful models such as
+  FastGRFNet). An episode is one subject's trials in recording order, with the
+  state reset to zero for each subject. `subjects_per_batch` episodes run in
+  parallel, one trial per subject per step. The loss is cross-entropy at every
+  trial; gradients flow through the state for `chunk_length` trials, after which
+  the state is detached. Validation and test subjects are streamed the same way
+  from a zero state; `label_feedback` models receive each trial's label after it
+  has been predicted.
 - **Selection.** The epoch with the highest validation balanced accuracy,
   ties broken by validation loss, is tested. `patience` stops training early.
 - **Seeds.** Python, NumPy and PyTorch are seeded with `seed + fold`.
@@ -92,8 +100,8 @@ val_fraction = 0.1
 # folds = [0]
 
 [model]
-name = "GRFNet"             # or "EEGNet", "ShallowConvNet" (baselines extra)
-use_channel_names = false   # GRFNet only: true seeds spatial filters from the channel names
+name = "GRFNet"             # or "FastGRFNet", "EEGNet", "ShallowConvNet" (baselines extra)
+use_channel_names = false   # GRFNet models only: true seeds spatial filters from the channel names
 
 [model.kwargs]              # any argument of the model, e.g. dilations = [1, 2, 3, 5]
 
@@ -107,6 +115,9 @@ scheduler = "cosine"        # or "none"
 device = "auto"
 amp = false
 deterministic = false
+mode = "standard"           # "episodic" for FastGRFNet, which trains only this way
+chunk_length = 8            # episodic: trials per back-propagation chunk
+subjects_per_batch = 8      # episodic: subject sequences run in parallel
 ```
 
 `n_channels`, `n_times` and `n_classes` come from the data; `sfreq` is passed to
@@ -121,7 +132,7 @@ runs/<run name>/
   fold_<k>/
     history.csv                        per-epoch loss, accuracy, learning rate, time
     best.pt                            selected checkpoint with data options and subjects
-    metrics.json, predictions.csv
+    metrics.json, predictions.csv     predictions.csv has each trial's position in its subject's sequence
   report/                              python -m grfnet.report
 ```
 
@@ -132,6 +143,7 @@ runs/<run name>/
 | `learning_curves.png`  | Loss and accuracy per fold; dots mark the selected epoch.                                                  |
 | `confusion_matrix.png` | Pooled test confusion matrix.                                                                              |
 | `subject_scores.png`   | Balanced accuracy per subject and per fold, against chance.                                                |
+| `adaptation.png`       | Test accuracy by trial position within each subject's sequence; `report.md` gives first- and second-half accuracy. |
 | `stream_gates.png`     | Gate weight of each pooling statistic per fold.                                                            |
 | `spatial_filters.png`  | Spatial filter weights.                                                                                    |
 | `kernel_responses.png` | Frequency responses of frozen and learnable kernels per dilation.                                          |
