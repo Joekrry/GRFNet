@@ -23,6 +23,7 @@ All notable changes to this project are documented here. The format follows
 - `FastGRFNet`: GRF-Net with fast-weight spatial filters, updated after each trial by a delta rule from a writer network, with write modes `off`, `unsupervised` and `label_feedback`. A zero state reproduces GRFNet exactly.
 - Episodic meta-training (`training.mode = "episodic"`, with `chunk_length` and `subjects_per_batch`) for stateful models: each subject's trials in recording order from a zero state, truncated back-propagation through the state. Stateful models are validated and tested on streamed sequences, with labels after prediction for `label_feedback`. Adds `configs/fastgrfnet_eegmmidb_imagery_lr.toml` and `grfnet.experiments.episodes`.
 - Run reports add `adaptation.png`, test accuracy by trial position, with first- and second-half accuracy; `predictions.csv` records each trial's position.
+- `GRFNetSeq`: causal GRF-Net with a left-padded kernel bank and sliding-window statistics, predicting at every time step, with `stream` for chunk-by-chunk processing. Trained with cross-entropy at every step and scored by the last; run reports add `time_course.png`. Adds `configs/grfnetseq_eegmmidb_imagery_lr.toml`.
 - scikit-learn in the `viz` extra, for t-SNE. Without it, embeddings are projected with PCA.
 - `configs/grfnet_eegmmidb_imagery_lr.toml`: baseline with `dilations = [1, 2, 3, 5]` at 160 Hz.
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import inspect
 import json
 import math
 import platform
@@ -24,7 +25,7 @@ from .._progress import bar, use_bars, writer
 from ..checkpoint import save_checkpoint
 from ..data.alignment import euclidean_alignment
 from ..data.eegmmidb import EpochsData, load_epochs
-from ..models import MODELS, GRFNet, load_model
+from ..models import MODELS, load_model
 from . import episodes
 from .config import DataConfig, ExperimentConfig, ModelConfig, load_config, to_toml
 from .metrics import classification_metrics, per_subject_scores
@@ -67,14 +68,15 @@ def build_model(config: ModelConfig, data: EpochsData) -> nn.Module:
     if config.name not in MODELS:
         raise ValueError(f"unknown model {config.name!r}; available: {sorted(MODELS)}")
     kwargs = dict(config.kwargs)
-    if issubclass(MODELS[config.name], GRFNet):
+    if _takes_channel_names(MODELS[config.name]):
         if config.use_channel_names:
             kwargs.setdefault("channel_names", list(data.ch_names))
         # Explicit dilations replace sfreq-based scaling.
         if "dilations" not in kwargs:
             kwargs.setdefault("sfreq", data.sfreq)
     elif config.use_channel_names:
-        raise ValueError(f"model.use_channel_names applies only to GRFNet and FastGRFNet, not {config.name}")
+        names = ", ".join(name for name, cls in MODELS.items() if _takes_channel_names(cls))
+        raise ValueError(f"model.use_channel_names applies only to {names}, not {config.name}")
     return MODELS[config.name](n_channels=len(data.ch_names), n_times=data.X.shape[-1], n_classes=data.n_classes,
                                **kwargs)
 
@@ -90,9 +92,26 @@ def predict_proba(model: nn.Module, X: np.ndarray, *, scale: float = 1.0, batch_
     return np.concatenate(out) if out else np.zeros((0, 0), np.float32)
 
 
+def _takes_channel_names(cls: type[nn.Module]) -> bool:
+    # GRF-Net models take channel names and a sampling rate; the baselines do not.
+    return "channel_names" in inspect.signature(cls.__init__).parameters
+
+
 def trial_logits(out) -> torch.Tensor:
-    # Stateful models return (logits, state); a single call starts from a zero state.
-    return out[0] if isinstance(out, tuple) else out
+    """Logits of shape (batch, n_classes) from any model's output.
+
+    Stateful models return (logits, state), and a single call starts from a zero state. Sequence
+    models return logits at every time step; the last step is the prediction for the trial.
+    """
+    out = out[0] if isinstance(out, tuple) else out
+    return out[..., -1] if out.dim() == 3 else out
+
+
+def trial_loss(out: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Cross-entropy over trials, or over every time step for sequence models."""
+    if out.dim() == 3:
+        return nn.functional.cross_entropy(out.float(), y[:, None].expand(-1, out.shape[-1]))
+    return nn.functional.cross_entropy(out.float(), y)
 
 
 def predict_trials(model: nn.Module, data: EpochsData, *, scale: float = 1.0,
@@ -300,8 +319,9 @@ def _train_batches(model: nn.Module, X: torch.Tensor, y: torch.Tensor, optimiser
         xb, yb = X[batch].to(device), y[batch].to(device)
         optimiser.zero_grad(set_to_none=True)
         with torch.autocast(device.type, enabled=amp):
-            logits = model(xb)
-            loss = nn.functional.cross_entropy(logits.float(), yb)
+            out = model(xb)
+            loss = trial_loss(out, yb)
+            logits = trial_logits(out)
         scaler.scale(loss).backward()
         scaler.step(optimiser)
         scaler.update()

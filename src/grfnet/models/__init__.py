@@ -6,11 +6,12 @@ from ..checkpoint import load_checkpoint
 from .eegnet import EEGNet
 from .fastgrfnet import FastGRFNet
 from .grfnet import GRFNet
+from .grfnetseq import GRFNetSeq
 from .shallowconvnet import ShallowConvNet
 
 # Names used in experiment configs and stored in checkpoints.
-MODELS: dict[str, type[nn.Module]] = {"GRFNet": GRFNet, "FastGRFNet": FastGRFNet, "EEGNet": EEGNet,
-                                     "ShallowConvNet": ShallowConvNet}
+MODELS: dict[str, type[nn.Module]] = {"GRFNet": GRFNet, "FastGRFNet": FastGRFNet, "GRFNetSeq": GRFNetSeq,
+                                     "EEGNet": EEGNet, "ShallowConvNet": ShallowConvNet}
 
 
 def load_model(path, *, map_location="cpu") -> nn.Module:
@@ -21,4 +22,4 @@ def load_model(path, *, map_location="cpu") -> nn.Module:
     return MODELS[name].load(path, map_location=map_location)  # pyright: ignore[reportAttributeAccessIssue]
 
 
-__all__ = ["EEGNet", "FastGRFNet", "GRFNet", "MODELS", "ShallowConvNet", "load_model"]
+__all__ = ["EEGNet", "FastGRFNet", "GRFNet", "GRFNetSeq", "MODELS", "ShallowConvNet", "load_model"]

@@ -69,6 +69,8 @@ the whole run name and `--out` the folder; both should be the exception.
   the state is detached. Validation and test subjects are streamed the same way
   from a zero state; `label_feedback` models receive each trial's label after it
   has been predicted.
+- **Sequence models.** GRFNetSeq predicts at every time step. Its loss is
+  cross-entropy at every step, and each trial is scored by its last step.
 - **Selection.** The epoch with the highest validation balanced accuracy,
   ties broken by validation loss, is tested. `patience` stops training early.
 - **Seeds.** Python, NumPy and PyTorch are seeded with `seed + fold`.
@@ -100,7 +102,7 @@ val_fraction = 0.1
 # folds = [0]
 
 [model]
-name = "GRFNet"             # or "FastGRFNet", "EEGNet", "ShallowConvNet" (baselines extra)
+name = "GRFNet"             # or "FastGRFNet", "GRFNetSeq", "EEGNet", "ShallowConvNet" (baselines extra)
 use_channel_names = false   # GRFNet models only: true seeds spatial filters from the channel names
 
 [model.kwargs]              # any argument of the model, e.g. dilations = [1, 2, 3, 5]
@@ -150,11 +152,12 @@ runs/<run name>/
 | `spatial_patterns.png` | Activation patterns `A = C W^T (W C W^T)^-1` from the test data [1]. \*                                    |
 | `embeddings.png`       | t-SNE of the embedding (PCA without scikit-learn), by class and by correctness. \*                         |
 | `saliency.png`         | Mean \|gradient x input\| per channel and over time. \*                                                    |
+| `time_course.png`      | GRFNetSeq: test accuracy of the prediction at every time step. \*                                          |
 
 Model figures use the lowest fold's checkpoint unless `--fold` is given. For
-EEGNet and ShallowConvNet runs, the stream gates, spatial filters and patterns,
-kernel responses and embeddings are skipped with a note, as they read GRFNet's
-internals. Figures
+EEGNet and ShallowConvNet runs, the stream gates, spatial filters and patterns
+and kernel responses are skipped with a note, as they read GRF-Net layers.
+Embeddings are drawn for GRFNet and FastGRFNet only. Figures
 marked \* read that fold's test data and are skipped, with a note, if the dataset
 is missing. Timings depend on the machine.
 

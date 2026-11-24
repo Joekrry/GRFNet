@@ -15,7 +15,7 @@ from ..checkpoint import load_checkpoint
 from ..experiments import episodes
 from ..experiments.config import ExperimentConfig, load_config
 from ..experiments.runner import dumps_json, load_dataset, predict_proba, resolve_device
-from ..models import GRFNet, load_model
+from ..models import GRFNet, GRFNetSeq, load_model
 from . import analysis, benchmark, figures
 
 
@@ -73,7 +73,7 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
         raise ValueError(f"fold {chosen} has no checkpoint in {run.path}; available: {sorted(run.checkpoints)}")
     figure_notes: dict[str, str] = {}
     skipped: dict[str, str] = {}
-    steps = bar(total=10, enabled=bars, desc="report", unit="step", leave=False)
+    steps = bar(total=11, enabled=bars, desc="report", unit="step", leave=False)
 
     def emit(name: str, fig, caption: str) -> None:
         save(fig, out / name, dpi)
@@ -104,7 +104,7 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
         metas[k] = load_checkpoint(path)["metadata"]
     model, meta = models[chosen], metas[chosen]
     sfreq = float(meta["data"]["sfreq"])
-    if isinstance(model, GRFNet):
+    if _grf_layers(model):
         emit("stream_gates.png", figures.gate_weights({k: figures.gates_of(m) for k, m in models.items()},
                                                       list(model.statistics)),
              "Softmax weight of each pooling statistic in every fold's model.")
@@ -114,8 +114,8 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
         emit("kernel_responses.png", figures.kernel_responses(model, sfreq),
              f"Frequency responses of fold {chosen}'s frozen and learnable bank kernels at each dilation.")
     else:
-        skipped["GRFNet figures"] = (f"{type(model).__name__} has no stream gates, spatial front end, kernel bank "
-                                     "or embedding")
+        skipped["GRFNet figures"] = (f"{type(model).__name__} has no stream gates, spatial front end or kernel "
+                                     "bank")
 
     analyses: dict = {}
     if data:
@@ -150,6 +150,11 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
     (out / "report.md").write_text(_markdown(summary, figure_notes), encoding="utf-8")
     log(f"report written to {out}")
     return summary
+
+
+def _grf_layers(model) -> bool:
+    # Spatial front end, kernel bank and stream gate, as in GRFNet, FastGRFNet and GRFNetSeq.
+    return all(hasattr(model, name) for name in ("spatial", "bank", "stream_gate", "statistics"))
 
 
 def read_predictions(run_dir: Path, folds: list[int]) -> dict[str, np.ndarray] | None:
@@ -190,12 +195,13 @@ def _data_analyses(model, meta, test, out, emit, fold, max_trials, dpi, device, 
     rng = np.random.default_rng(seed)
     index = np.sort(rng.choice(len(X), size=min(max_trials, len(X)), replace=False))
     method = None
-    if isinstance(model, GRFNet):
+    if _grf_layers(model):
         patterns = figures.spatial_patterns(figures.spatial_weights(model), X / scale)
         emit("spatial_patterns.png", figures.topomap_grid(patterns, test.ch_names, test.sfreq,
                                                           f"Spatial activation patterns, fold {fold} (each map scaled to its own maximum)"),
              f"Activation patterns of fold {fold}'s spatial filters, estimated from its test data (Haufe et al. 2014). "
              "Patterns show which channels each component responds to.")
+    if isinstance(model, GRFNet):
         probs = predict_proba(model, X[index], scale=scale, device=dev)
         pred = probs.argmax(1)
         points, method = analysis.project_2d(analysis.embeddings(model, X[index], scale=scale, device=dev),
@@ -207,11 +213,20 @@ def _data_analyses(model, meta, test, out, emit, fold, max_trials, dpi, device, 
     emit("saliency.png", analysis.saliency_figure(values, test.y[index], test.class_names, test.ch_names,
                                                   test.sfreq, test.tmin),
          f"Mean absolute gradient x input of the true-class score, per channel and over time, for fold {fold}.")
+    extra = {}
+    if isinstance(model, GRFNetSeq):
+        accuracy = analysis.time_course(model, X[index], test.y[index], scale=scale, device=dev)
+        times = test.tmin + np.arange(len(accuracy)) / test.sfreq
+        emit("time_course.png", figures.time_course(times, accuracy, 1.0 / len(test.class_names)),
+             f"Accuracy of fold {fold}'s causal prediction at every time step, over {len(index)} test trials.")
+        extra["time_course"] = {"final_accuracy": float(accuracy[-1]),
+                                "peak_accuracy": float(accuracy.max()),
+                                "peak_time": float(times[int(accuracy.argmax())])}
     channel_saliency = values.mean(axis=(0, 2))
     top = np.argsort(channel_saliency)[::-1][:5]
     model.cpu()
     return {"fold": fold, "n_trials": int(len(index)), "projection": method,
-            "top_saliency_channels": [test.ch_names[i] for i in top]}
+            "top_saliency_channels": [test.ch_names[i] for i in top], **extra}
 
 
 def _summary(run: RunFiles, fold: int, model, analyses: dict, efficiency: dict | None, figure_notes: dict,

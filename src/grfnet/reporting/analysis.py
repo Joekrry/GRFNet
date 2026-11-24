@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 from .._plotting import MUTED, SERIES, TEXT, class_label, eeg_info, figure, label, legend, title
+from ..experiments.runner import trial_logits
 
 
 @torch.no_grad()
@@ -53,6 +54,19 @@ def embedding_figure(points: np.ndarray, method: str, y: np.ndarray, pred: np.nd
     return fig
 
 
+@torch.no_grad()
+def time_course(model, X: np.ndarray, y: np.ndarray, *, scale: float = 1.0, batch_size: int = 256,
+                device: torch.device | str = "cpu") -> np.ndarray:
+    """Accuracy of a sequence model's prediction at every time step, over trials."""
+    model.eval().to(device)
+    hits = None
+    for i in range(0, len(X), batch_size):
+        out = model(torch.from_numpy(X[i:i + batch_size] / scale).float().to(device))
+        correct = (out.argmax(1).cpu().numpy() == y[i:i + batch_size, None]).sum(0)
+        hits = correct if hits is None else hits + correct
+    return np.zeros(0) if hits is None else hits / len(X)
+
+
 def saliency(model, X: np.ndarray, y: np.ndarray, *, scale: float = 1.0, batch_size: int = 128,
              device: torch.device | str = "cpu") -> np.ndarray:
     """Absolute gradient x input of the true-class score."""
@@ -61,10 +75,7 @@ def saliency(model, X: np.ndarray, y: np.ndarray, *, scale: float = 1.0, batch_s
     for i in range(0, len(X), batch_size):
         x = torch.from_numpy(X[i:i + batch_size] / scale).float().to(device).requires_grad_(True)
         target = torch.from_numpy(y[i:i + batch_size]).long().to(device)
-        logits = model(x)
-        # Stateful models return (logits, state); one call is a zero-state prediction.
-        logits = logits[0] if isinstance(logits, tuple) else logits
-        scores = logits.gather(1, target[:, None]).sum()
+        scores = trial_logits(model(x)).gather(1, target[:, None]).sum()
         (grad,) = torch.autograd.grad(scores, x)
         out.append((grad * x).abs().detach().cpu().numpy())
     return np.concatenate(out) if out else np.zeros_like(X)
