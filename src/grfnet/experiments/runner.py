@@ -71,8 +71,8 @@ def build_model(config: ModelConfig, data: EpochsData) -> nn.Module:
     if _takes_channel_names(MODELS[config.name]):
         if config.use_channel_names:
             kwargs.setdefault("channel_names", list(data.ch_names))
-        # Explicit dilations replace sfreq-based scaling.
-        if "dilations" not in kwargs:
+        # Explicit dilations replace sfreq-based scaling, except in models that need sfreq for other uses.
+        if "dilations" not in kwargs or getattr(MODELS[config.name], "needs_sfreq", False):
             kwargs.setdefault("sfreq", data.sfreq)
     elif config.use_channel_names:
         names = ", ".join(name for name, cls in MODELS.items() if _takes_channel_names(cls))

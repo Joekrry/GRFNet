@@ -100,6 +100,7 @@ stream gates, embeddings, saliency and an efficiency benchmark. Details:
 | [GRFNet](src/grfnet/models/grfnet/README.md) | Spatial filters, frozen and learnable dilated kernels, gated pooling | One vector per sequence |
 | [FastGRFNet](src/grfnet/models/fastgrfnet/README.md) | GRFNet whose spatial filters adapt within a subject's trial sequence through fast weights | Class scores and a state |
 | [GRFNetSeq](src/grfnet/models/grfnetseq/README.md) | Causal GRFNet with sliding-window statistics, streamed chunk by chunk | Class scores at every time step |
+| [GRFNet2d](src/grfnet/models/grfnet2d/README.md) | GRFNet on log-power spectrograms, electrodes as image channels, 2-D kernel bank | Class scores |
 | [EEGNet](src/grfnet/models/eegnet/README.md) | Baseline: temporal, depthwise spatial and separable convolutions (braindecode) | Class scores |
 | [ShallowConvNet](src/grfnet/models/shallowconvnet/README.md) | Baseline: temporal and spatial convolution, log band power (braindecode) | Class scores |
 
@@ -133,6 +134,7 @@ src/grfnet/
   models/grfnet/      GRFNet model
   models/fastgrfnet/  FastGRFNet (fast-weight spatial filters)
   models/grfnetseq/   GRFNetSeq (causal, streaming)
+  models/grfnet2d/    GRFNet2d (spectrograms)
   models/eegnet/, models/shallowconvnet/   baselines (braindecode wrappers)
   layers.py           spatial front-end, kernel bank, dilation scaling
   data/               EEGMMIDB loader and dataset report

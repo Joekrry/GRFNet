@@ -136,7 +136,10 @@ def subject_scores(per_subject: Mapping[str, dict], subject_fold: Mapping[int, i
 
 
 def spatial_weights(model) -> np.ndarray:
-    return model.spatial.conv.weight.detach().cpu().numpy()[:, :, 0].astype(np.float64)
+    """Spatial filter weights, shape (components, channels), from a 1x1 convolution of any dimension."""
+    conv = model.spatial if isinstance(model.spatial, torch.nn.Conv2d) else model.spatial.conv
+    weight = conv.weight.detach().cpu().numpy().astype(np.float64)
+    return weight.reshape(weight.shape[0], weight.shape[1])
 
 
 def spatial_patterns(weights: np.ndarray, X: np.ndarray) -> np.ndarray:

@@ -102,7 +102,7 @@ val_fraction = 0.1
 # folds = [0]
 
 [model]
-name = "GRFNet"             # or "FastGRFNet", "GRFNetSeq", "EEGNet", "ShallowConvNet" (baselines extra)
+name = "GRFNet"             # or "FastGRFNet", "GRFNetSeq", "GRFNet2d", "EEGNet", "ShallowConvNet" (baselines extra)
 use_channel_names = false   # GRFNet models only: true seeds spatial filters from the channel names
 
 [model.kwargs]              # any argument of the model, e.g. dilations = [1, 2, 3, 5]
@@ -122,8 +122,9 @@ chunk_length = 8            # episodic: trials per back-propagation chunk
 subjects_per_batch = 8      # episodic: subject sequences run in parallel
 ```
 
-`n_channels`, `n_times` and `n_classes` come from the data; `sfreq` is passed to
-the model unless `dilations` is set.
+`n_channels`, `n_times` and `n_classes` come from the data. `sfreq` is passed to
+GRF-Net models unless `dilations` is set, and always to GRFNet2d, which uses it
+for `fmax`.
 
 ## Outputs
 
@@ -156,8 +157,10 @@ runs/<run name>/
 
 Model figures use the lowest fold's checkpoint unless `--fold` is given. For
 EEGNet and ShallowConvNet runs, the stream gates, spatial filters and patterns
-and kernel responses are skipped with a note, as they read GRF-Net layers.
-Embeddings are drawn for GRFNet and FastGRFNet only. Figures
+and kernel responses are skipped with a note, as they read GRF-Net layers. For
+GRFNet2d, whose kernels filter spectrograms, kernel responses and activation
+patterns are skipped. Embeddings are drawn for models with `forward_features`
+(GRFNet, FastGRFNet with a zero state, GRFNet2d). Figures
 marked \* read that fold's test data and are skipped, with a note, if the dataset
 is missing. Timings depend on the machine.
 

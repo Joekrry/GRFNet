@@ -15,7 +15,7 @@ from ..checkpoint import load_checkpoint
 from ..experiments import episodes
 from ..experiments.config import ExperimentConfig, load_config
 from ..experiments.runner import dumps_json, load_dataset, predict_proba, resolve_device
-from ..models import GRFNet, GRFNetSeq, load_model
+from ..models import GRFNetSeq, load_model
 from . import analysis, benchmark, figures
 
 
@@ -104,15 +104,19 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
         metas[k] = load_checkpoint(path)["metadata"]
     model, meta = models[chosen], metas[chosen]
     sfreq = float(meta["data"]["sfreq"])
-    if _grf_layers(model):
+    if _gated(model):
         emit("stream_gates.png", figures.gate_weights({k: figures.gates_of(m) for k, m in models.items()},
                                                       list(model.statistics)),
              "Softmax weight of each pooling statistic in every fold's model.")
         emit("spatial_filters.png", figures.topomap_grid(figures.spatial_weights(model), meta["ch_names"], sfreq,
                                                          f"Spatial filter weights, fold {chosen} (each map scaled to its own maximum)"),
              f"Spatial filter weights of fold {chosen}'s model. Weights show how channels are combined, not where the signal comes from.")
-        emit("kernel_responses.png", figures.kernel_responses(model, sfreq),
-             f"Frequency responses of fold {chosen}'s frozen and learnable bank kernels at each dilation.")
+        if _temporal(model):
+            emit("kernel_responses.png", figures.kernel_responses(model, sfreq),
+                 f"Frequency responses of fold {chosen}'s frozen and learnable bank kernels at each dilation.")
+        else:
+            skipped["kernel responses and activation patterns"] = (
+                f"{type(model).__name__} filters spectrograms, not the raw signal")
     else:
         skipped["GRFNet figures"] = (f"{type(model).__name__} has no stream gates, spatial front end or kernel "
                                      "bank")
@@ -152,9 +156,14 @@ def write_run_report(run_dir: str | Path, out_dir: str | Path | None = None, *, 
     return summary
 
 
-def _grf_layers(model) -> bool:
-    # Spatial front end, kernel bank and stream gate, as in GRFNet, FastGRFNet and GRFNetSeq.
-    return all(hasattr(model, name) for name in ("spatial", "bank", "stream_gate", "statistics"))
+def _gated(model) -> bool:
+    # Spatial filters and a stream gate over pooling statistics: every GRF-Net model.
+    return all(hasattr(model, name) for name in ("spatial", "stream_gate", "statistics"))
+
+
+def _temporal(model) -> bool:
+    # A 1-D kernel bank on the spatially filtered signal: GRFNet, FastGRFNet and GRFNetSeq.
+    return _gated(model) and hasattr(model, "bank")
 
 
 def read_predictions(run_dir: Path, folds: list[int]) -> dict[str, np.ndarray] | None:
@@ -195,13 +204,13 @@ def _data_analyses(model, meta, test, out, emit, fold, max_trials, dpi, device, 
     rng = np.random.default_rng(seed)
     index = np.sort(rng.choice(len(X), size=min(max_trials, len(X)), replace=False))
     method = None
-    if _grf_layers(model):
+    if _temporal(model):
         patterns = figures.spatial_patterns(figures.spatial_weights(model), X / scale)
         emit("spatial_patterns.png", figures.topomap_grid(patterns, test.ch_names, test.sfreq,
                                                           f"Spatial activation patterns, fold {fold} (each map scaled to its own maximum)"),
              f"Activation patterns of fold {fold}'s spatial filters, estimated from its test data (Haufe et al. 2014). "
              "Patterns show which channels each component responds to.")
-    if isinstance(model, GRFNet):
+    if hasattr(model, "forward_features"):
         probs = predict_proba(model, X[index], scale=scale, device=dev)
         pred = probs.argmax(1)
         points, method = analysis.project_2d(analysis.embeddings(model, X[index], scale=scale, device=dev),
