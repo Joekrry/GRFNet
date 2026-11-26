@@ -42,6 +42,38 @@ the simpler configuration is kept. All ablations and the other EEGMMIDB tasks
 are in the [GRFNet README](src/grfnet/models/grfnet/README.md#ablations).
 See [Reproducing the results](#reproducing-the-results).
 
+Baselines, mean over seeds 0–2, with braindecode's default hyperparameters
+and GRFNet's training protocol, on each input:
+
+| Model                                        | Trainable parameters | MFLOPs per trial | Baseline input (0–4 s) | Final input (alignment, 0.5–4 s) |
+| -------------------------------------------- | -------------------- | ---------------- | ---------------------- | -------------------------------- |
+| GRFNet                                       | 3,365                | 3.5 / 3.1        | 0.706 (SD 0.009)       | 0.805 (SD 0.009)                 |
+| [EEGNet](src/grfnet/models/eegnet/README.md) | 2,770                | 43 / 38          | **0.825** (SD 0.004)   | 0.781 (SD 0.003)                 |
+| [ShallowConvNet](src/grfnet/models/shallowconvnet/README.md) | 106,482 | 79 / 69      | 0.819 (SD 0.004)       | 0.729 (SD 0.012)                 |
+
+On the final input, GRFNet is ahead of EEGNet (+0.023, p = 0.004) and
+ShallowConvNet (+0.076, p < 0.001). That input was selected for GRFNet,
+however, and lowers both baselines' accuracy. Compared at each model's best
+input, EEGNet is more accurate than GRFNet by 0.021 (p < 0.001), and
+ShallowConvNet does not differ from it (−0.015, p = 0.11). GRFNet needs about
+14 times fewer operations than EEGNet and 25 times fewer than ShallowConvNet.
+
+The GRF-Net variants, on the same final input (alignment, 0.5–4 s), mean over
+seeds 0–2:
+
+| Model                                  | Trainable parameters | Balanced accuracy (pooled) | Cohen's kappa | vs GRFNet final, per subject |
+| -------------------------------------- | -------------------- | -------------------------- | ------------- | ---------------------------- |
+| FastGRFNet, writes off                 | 3,365                | 0.802 (SD 0.004)           | 0.604         | −0.003, p = 0.50             |
+| FastGRFNet, unsupervised writes        | 8,118                | 0.737 (SD 0.006)           | 0.474         | −0.068, p < 0.001            |
+| FastGRFNet, label feedback †           | 8,214                | 0.834 (SD 0.007)           | 0.667         | +0.030, p < 0.001            |
+| GRFNetSeq, last time step              | 3,365                | 0.616 (SD 0.006)           | 0.232         | −0.190, p < 0.001            |
+| GRFNet2d                               | 3,077                | 0.603 (SD 0.003)           | 0.206         | −0.203, p < 0.001            |
+
+† Uses each test trial's label after predicting it. Its gain comes from the
+predictable alternation of EEGMMIDB's cues, not from adaptation; see the
+[FastGRFNet README](src/grfnet/models/fastgrfnet/README.md#results). Details for
+each model are in its README.
+
 ## Installation
 
 ```bash

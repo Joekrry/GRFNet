@@ -95,7 +95,7 @@ def time_course(times: np.ndarray, accuracy: np.ndarray, chance: float):
     ax.plot(times, accuracy, color=SERIES[0], linewidth=1.6, label="prediction at each time step")
     ax.axhline(chance, color=MUTED, linewidth=0.8, linestyle="--", label=f"chance {chance:.2f}")
     ax.set_ylim(0.0, 1.0)
-    label(ax, "Time from the start of the trial window (s)", "Test accuracy")
+    label(ax, "Time from the cue (s)", "Test accuracy")
     title(ax, "Accuracy of the causal prediction over the trial")
     legend(ax, loc="lower right")
     return fig

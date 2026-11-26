@@ -45,6 +45,36 @@ report adds `time_course.png`: test accuracy of the prediction at every time
 step. See
 [`configs/grfnetseq_eegmmidb_imagery_lr.toml`](../../../../configs/grfnetseq_eegmmidb_imagery_lr.toml).
 
+## Results
+
+EEGMMIDB imagined left versus right fist, 109 subjects, 5 subject-disjoint
+folds, Euclidean alignment and a 0.5–4 s window, seeds 0–2. Run names are
+`grfnetseq_eegmmidb_imagery_lr_ea_win_0p5_4[_seed<n>]`. Trials are scored by
+the prediction at the last time step.
+
+| Seed | Pooled | Per fold, mean (SD) | Per subject, mean (SD) | Cohen's kappa | Val   |
+| ---- | ------ | ------------------- | ---------------------- | ------------- | ----- |
+| 0    | 0.623  | 0.624 (0.025)       | 0.623 (0.096)          | 0.246         | 0.652 |
+| 1    | 0.611  | 0.611 (0.011)       | 0.610 (0.091)          | 0.222         | 0.648 |
+| 2    | 0.614  | 0.613 (0.026)       | 0.613 (0.100)          | 0.227         | 0.666 |
+
+- **Against GRFNet's final configuration:** the mean over seeds is 0.616
+  (SD 0.006), against 0.805. Seed-averaged per-subject accuracy is 0.190 lower,
+  with 4 subjects better and 105 worse (p = 2.4e-19). Six subjects are below
+  chance.
+- **Accuracy over the trial:** in the report for seed 0, fold 0,
+  `time_course.png` shows accuracy of 0.72–0.77 between 0.5 and 1.0 s after the
+  cue (peak 0.767 at 0.93 s). It then falls to about 0.62, and the last step
+  scores 0.602.
+  - **The decision rule loses information:** scoring by the last step,
+    decided before the runs, discards the most informative part of the trial.
+  - **The early accuracy may not be motor imagery:** it appears within a few
+    samples of the window opening, which suggests a slow lateralised signal,
+    such as eye position following the cue, rather than mu or beta rhythms.
+    The peak was found on test data and is not a valid performance estimate.
+- **Cost:** 3,365 trainable parameters and 4.4 MFLOPs for a 3.5 s trial
+  (logits at every step). Latency is 3.4 ms on the CPU for one trial.
+
 ## Configuration
 
 All arguments of [GRFNet](../grfnet/README.md#configuration) except `head`,

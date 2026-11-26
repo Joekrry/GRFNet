@@ -89,12 +89,59 @@ The writer adds 4,753 trainable parameters in `unsupervised` mode and 4,849 in
 `label_feedback` mode for 64 channels, 16 spatial components and two classes,
 on top of GRF-Net's 3,365.
 
+## Results
+
+EEGMMIDB imagined left versus right fist, 109 subjects, 5 subject-disjoint
+folds, Euclidean alignment and a 0.5–4 s window (GRF-Net's final input),
+episodic training, seeds 0–2. Run names are
+`fastgrfnet_eegmmidb_imagery_lr_ea_win_0p5_4_<mode>[_seed<n>]`.
+
+| Write mode       | Seed | Pooled | Per fold, mean (SD) | Per subject, mean (SD) | Cohen's kappa | Val   |
+| ---------------- | ---- | ------ | ------------------- | ---------------------- | ------------- | ----- |
+| `off`            | 0    | 0.805  | 0.805 (0.024)       | 0.805 (0.121)          | 0.610         | 0.808 |
+| `off`            | 1    | 0.802  | 0.802 (0.014)       | 0.802 (0.120)          | 0.605         | 0.796 |
+| `off`            | 2    | 0.798  | 0.798 (0.038)       | 0.798 (0.118)          | 0.596         | 0.861 |
+| `unsupervised`   | 0    | 0.742  | 0.742 (0.026)       | 0.742 (0.128)          | 0.484         | 0.767 |
+| `unsupervised`   | 1    | 0.738  | 0.738 (0.014)       | 0.738 (0.131)          | 0.476         | 0.757 |
+| `unsupervised`   | 2    | 0.731  | 0.731 (0.031)       | 0.731 (0.120)          | 0.463         | 0.802 |
+| `label_feedback` | 0    | 0.841  | 0.841 (0.006)       | 0.842 (0.079)          | 0.682         | 0.855 |
+| `label_feedback` | 1    | 0.833  | 0.833 (0.020)       | 0.835 (0.071)          | 0.667         | 0.852 |
+| `label_feedback` | 2    | 0.827  | 0.827 (0.018)       | 0.827 (0.079)          | 0.653         | 0.866 |
+
+Comparisons use seed-averaged per-subject balanced accuracy, with paired
+Wilcoxon signed-rank tests over 109 subjects.
+
+| Comparison                      | Difference | Better / worse | p       |
+| ------------------------------- | ---------- | -------------- | ------- |
+| `off` vs GRFNet, final config   | −0.003     | 52 / 56        | 0.50    |
+| `unsupervised` vs `off`         | −0.065     | 6 / 103        | 6e-18   |
+| `label_feedback` vs `off`       | +0.033     | 69 / 40        | 5.7e-5  |
+
+- **Episodic training costs nothing.** With writes off, FastGRFNet matches
+  GRFNet trained the standard way (0.802 against 0.805).
+- **Unsupervised writes hurt.** Every seed loses about 0.065, and only 6
+  subjects improve. Second-half accuracy gains no more than with writes off
+  (+0.010 against +0.016, p = 0.38), so there is no sign of adaptation.
+- **The label-feedback gain comes from the order of the cues, not from
+  adaptation.** In EEGMMIDB's imagery runs, consecutive trials have opposite
+  labels 74% of the time, so guessing the opposite of the previous label scores
+  0.741 without any EEG. With label feedback, accuracy zigzags with trial
+  position: 0.752, 0.982, 0.789, 0.936, 0.780 and 0.890 at positions 0–5,
+  against 0.78, 0.80, 0.77, 0.74, 0.81 and 0.73 with writes off. Accuracy is
+  also lower in the second half of each sequence than in the first (0.825
+  against 0.842), the opposite of adaptation. The writer has learned the cue
+  sequence. The +0.033 therefore does not show that fast weights adapt to a
+  subject's EEG.
+
 ## Limitations
 
 - Fast weights only help if the writer is trained on sequences of trials,
   which is why FastGRFNet trains only in episodic mode.
 - EEGMMIDB has about 45 left/right imagery trials per subject, so each
   adaptation sequence is short.
+- On data whose cue order is predictable, `label_feedback` can learn the label
+  sequence instead of the EEG. A fair test needs trials presented in random
+  order, or a dataset with random cue order.
 
 ## References
 

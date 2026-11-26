@@ -44,6 +44,33 @@ The run report draws the stream gates, spatial filter weights, embeddings and
 saliency. It skips kernel frequency responses and activation patterns, which
 assume filters on the raw signal.
 
+## Results
+
+EEGMMIDB imagined left versus right fist, 109 subjects, 5 subject-disjoint
+folds, Euclidean alignment and a 0.5–4 s window, seeds 0–2, with the config's
+spectrogram settings. Run names are
+`grfnet2d_eegmmidb_imagery_lr_ea_win_0p5_4[_seed<n>]`.
+
+| Seed | Pooled | Per fold, mean (SD) | Per subject, mean (SD) | Cohen's kappa | Val   |
+| ---- | ------ | ------------------- | ---------------------- | ------------- | ----- |
+| 0    | 0.600  | 0.599 (0.018)       | 0.598 (0.105)          | 0.199         | 0.651 |
+| 1    | 0.606  | 0.606 (0.017)       | 0.605 (0.109)          | 0.212         | 0.602 |
+| 2    | 0.603  | 0.604 (0.037)       | 0.604 (0.113)          | 0.206         | 0.667 |
+
+- **Against GRFNet's final configuration:** the mean over seeds is 0.603
+  (SD 0.003), against 0.805. Seed-averaged per-subject accuracy is 0.203 lower,
+  with 5 subjects better and 104 worse (p = 1.1e-18). Twelve subjects are below
+  chance.
+- **Possible reasons, not tested here:**
+  - **Time resolution:** with 0.4 s windows every 0.1 s, the spectrogram has
+    coarse time resolution.
+  - **Phase:** log power discards phase and slow components, including the
+    early lateralised signal GRFNetSeq picks up.
+  - **Spatial filtering:** the spatial filters mix log power across electrodes,
+    which cannot reproduce the spatial filtering of the raw signal that GRF-Net
+    relies on.
+- **Cost:** 3,077 trainable and 1,440 frozen parameters, 3.9 MFLOPs per trial.
+
 ## Configuration
 
 | Argument               | Default     | Meaning                                                          |
